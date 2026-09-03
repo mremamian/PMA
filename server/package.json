@@ -1,0 +1,24 @@
+{
+  "name": "pma-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Product Manager Assistant — REST API for projects, teams, modules and dependencies",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/index.js",
+    "dev": "node --watch --env-file-if-exists=.env src/index.js",
+    "migrate": "node --env-file-if-exists=.env src/db/migrate.js",
+    "seed": "node --env-file-if-exists=.env src/db/seed.js",
+    "db:reset": "node --env-file-if-exists=.env src/db/migrate.js --drop && node --env-file-if-exists=.env src/db/seed.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "pg": "^8.23.0",
+    "zod": "^4.5.4"
+  }
+}

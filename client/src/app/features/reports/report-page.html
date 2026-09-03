@@ -1,0 +1,393 @@
+<div class="page">
+  <header class="page__head">
+    <div>
+      <h1 class="page__title">گزارش ظرفیت افراد</h1>
+      <p class="page__subtitle">
+        بار کاری هر نفر در همهٔ پروژه‌ها: کجا وقت آزاد دارد و کجا چند کار هم‌زمان روی دستش است.
+      </p>
+    </div>
+    <div class="page__actions">
+      <button type="button" class="btn btn--sm" (click)="load()">تازه‌سازی</button>
+    </div>
+  </header>
+
+  @if (error(); as message) {
+    <div class="banner banner--error" role="alert">
+      <span>{{ message }}</span>
+      <button type="button" class="btn btn--sm" (click)="load()">تلاش دوباره</button>
+    </div>
+  }
+
+  @if (loading()) {
+    <div class="state"><span class="spinner"></span><span>در حال محاسبهٔ بار کاری…</span></div>
+  } @else if (report(); as data) {
+    <!-- ------------------------------------------------------------ filters -->
+    <section class="filters" aria-label="فیلترها">
+      <div class="filters__row">
+        <span class="filters__label">پروژه</span>
+        <div class="chips">
+          @for (project of data.projects; track project.id) {
+            <button
+              type="button"
+              class="chipbtn"
+              [class.chipbtn--on]="projectFilter().has(project.id)"
+              (click)="toggleProject(project.id)"
+            >
+              <span class="chipbtn__dot" [style.background]="project.color"></span>
+              {{ project.name }}
+            </button>
+          }
+          @if (data.projects.length === 0) {
+            <span class="subtle">پروژه‌ای وجود ندارد</span>
+          }
+        </div>
+      </div>
+
+      <div class="filters__row">
+        <span class="filters__label">تیم</span>
+        <div class="chips">
+          @for (team of data.teams; track team.id) {
+            <button
+              type="button"
+              class="chipbtn"
+              [class.chipbtn--on]="teamFilter().has(team.id)"
+              (click)="toggleTeam(team.id)"
+            >
+              <span class="chipbtn__dot" [style.background]="team.color"></span>
+              {{ team.name }}
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="filters__row">
+        <span class="filters__label">بازه</span>
+        <div class="chips">
+          <button type="button" class="chipbtn" [class.chipbtn--on]="windowFrom() === null" (click)="setWindowPreset(null)">
+            همهٔ کارها
+          </button>
+          <button type="button" class="chipbtn" (click)="setWindowPreset(30)">۳۰ روز آینده</button>
+          <button type="button" class="chipbtn" (click)="setWindowPreset(90)">۹۰ روز آینده</button>
+          <span class="filters__window">{{ clampedWindowLabel() }}</span>
+        </div>
+      </div>
+
+      <div class="filters__row">
+        <span class="filters__label">افراد</span>
+        <div class="chips chips--controls">
+          <input
+            type="search"
+            class="filters__search"
+            placeholder="جستجوی نام یا سمت…"
+            [value]="personSearch()"
+            (input)="personSearch.set($any($event.target).value)"
+            aria-label="جستجوی افراد"
+          />
+
+          <label class="toggle">
+            <input
+              type="checkbox"
+              [checked]="onlyWithWork()"
+              (change)="onlyWithWork.set($any($event.target).checked)"
+            />
+            <span>فقط افرادی که کار دارند</span>
+          </label>
+
+          <select
+            class="filters__select"
+            [value]="sortBy()"
+            (change)="sortBy.set($any($event.target).value)"
+            aria-label="ترتیب"
+          >
+            <option value="load" [selected]="sortBy() === 'load'">پرکارترین اول</option>
+            <option value="free" [selected]="sortBy() === 'free'">آزادترین اول</option>
+            <option value="name" [selected]="sortBy() === 'name'">بر اساس نام</option>
+          </select>
+
+          <div class="toolbar__group" role="group" aria-label="بزرگ‌نمایی">
+            @for (preset of zoomPresets; track preset.id) {
+              <button
+                type="button"
+                class="seg"
+                [class.seg--active]="zoom() === preset.id"
+                (click)="zoom.set(preset.id)"
+              >
+                {{ zoomLabels[preset.id] }}
+              </button>
+            }
+          </div>
+
+          @if (hasFilters()) {
+            <button type="button" class="btn btn--sm btn--ghost" (click)="clearFilters()">
+              پاک کردن فیلترها
+            </button>
+          }
+        </div>
+      </div>
+    </section>
+
+    <!-- -------------------------------------------------------------- stats -->
+    @let s = summary();
+    <section class="stats" aria-label="خلاصه">
+      <div class="stat">
+        <span class="stat__value">{{ s.people | digits: settings.persianDigits() }}</span>
+        <span class="stat__label">نفر</span>
+      </div>
+      <div class="stat" [class.stat--danger]="s.overloaded > 0">
+        <span class="stat__value">{{ s.overloaded | digits: settings.persianDigits() }}</span>
+        <span class="stat__label">بیش‌بار</span>
+      </div>
+      <div class="stat" [class.stat--warning]="s.idle > 0">
+        <span class="stat__value">{{ s.idle | digits: settings.persianDigits() }}</span>
+        <span class="stat__label">بدون کار</span>
+      </div>
+      <div class="stat" [class.stat--warning]="s.unassigned > 0">
+        <span class="stat__value">{{ s.unassigned | digits: settings.persianDigits() }}</span>
+        <span class="stat__label">کار بدون مسئول</span>
+      </div>
+      <div class="stat">
+        <span class="stat__value">{{ s.averageUtilisation | digits: settings.persianDigits() }}٪</span>
+        <span class="stat__label">میانگین بهره‌وری</span>
+      </div>
+    </section>
+
+    <!-- ----------------------------------------------------------- timeline -->
+    @if (rows().length === 0) {
+      <div class="state state--empty">
+        <p class="state__title">چیزی برای نمایش نیست</p>
+        <p class="muted">فیلترها را تغییر دهید، یا «فقط افرادی که کار دارند» را خاموش کنید.</p>
+      </div>
+    } @else {
+      <div class="chart" dir="ltr">
+        <div class="chart__inner" [style.width.px]="sidebarWidth + timeline().width">
+          <div class="head">
+            <div class="head__corner" dir="rtl" [style.width.px]="sidebarWidth">
+              <span class="head__label">نفر</span>
+              <span class="head__legend">
+                <span class="key key--free"></span> آزاد
+                <span class="key key--over"></span> بیش‌بار
+              </span>
+            </div>
+
+            <div class="head__bands" [style.width.px]="timeline().width">
+              <div class="band band--year">
+                @for (tick of yearTicks(); track tick.iso) {
+                  <div class="tick tick--year" [style.left.px]="tick.x" [style.width.px]="tick.width">
+                    {{ tick.label }}
+                  </div>
+                }
+              </div>
+              <div class="band band--month">
+                @for (tick of monthTicks(); track tick.iso) {
+                  <div class="tick" [style.left.px]="tick.x" [style.width.px]="tick.width">
+                    {{ tick.label }}
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+
+          <div class="body">
+            <div class="sidebar" dir="rtl" [style.width.px]="sidebarWidth">
+              @for (row of rows(); track row.workload.user.id) {
+                <div class="person" [style.height.px]="row.height" [class]="loadClass(row.workload)">
+                  <pma-avatar [user]="row.workload.user" [size]="28" />
+                  <div class="person__text">
+                    <span class="person__name truncate">{{ row.workload.user.name }}</span>
+                    <span class="person__team truncate">
+                      {{ row.workload.user.teamName ?? 'بدون تیم' }}
+                    </span>
+                  </div>
+                  <div class="person__load" [title]="percent(row.workload.utilisation) + '٪ بهره‌وری'">
+                    <span class="person__pct">
+                      {{ percent(row.workload.utilisation) | digits: settings.persianDigits() }}٪
+                    </span>
+                    <span class="meter">
+                      <span
+                        class="meter__fill"
+                        [class.meter__fill--over]="row.workload.overloadedDays > 0"
+                        [style.width.%]="percent(row.workload.utilisation)"
+                      ></span>
+                    </span>
+                  </div>
+                </div>
+              }
+            </div>
+
+            <div class="canvas" [style.width.px]="timeline().width" [style.height.px]="canvasHeight()">
+              <div class="layer" aria-hidden="true">
+                @for (band of weekendBands(); track band.x) {
+                  <div class="weekend" [style.left.px]="band.x" [style.width.px]="band.width"></div>
+                }
+                @for (tick of monthTicks(); track tick.iso) {
+                  <div class="gridline" [style.left.px]="tick.x"></div>
+                }
+                @for (row of rows(); track row.workload.user.id) {
+                  <div class="rowband" [style.top.px]="row.top" [style.height.px]="row.height"></div>
+
+                  <!-- Free stretches and double-booked stretches, drawn behind
+                       the bars so both are readable at a glance. -->
+                  @for (gap of row.gaps; track gap.x) {
+                    <div
+                      class="freeband"
+                      [style.left.px]="gap.x"
+                      [style.width.px]="gap.width"
+                      [style.top.px]="row.top + 2"
+                      [style.height.px]="row.height - 4"
+                      [title]="gap.label"
+                    ></div>
+                  }
+                  @for (over of row.overloads; track over.x) {
+                    <div
+                      class="overband"
+                      [style.left.px]="over.x"
+                      [style.width.px]="over.width"
+                      [style.top.px]="row.top + 2"
+                      [style.height.px]="row.height - 4"
+                      [title]="over.label"
+                    ></div>
+                  }
+                }
+              </div>
+
+              <div class="layer layer--bars">
+                @for (row of rows(); track row.workload.user.id) {
+                  @for (bar of row.bars; track bar.assignment.id) {
+                    <a
+                      class="bar"
+                      [routerLink]="['/projects', bar.assignment.projectId]"
+                      [style.left.px]="bar.x"
+                      [style.top.px]="bar.y"
+                      [style.width.px]="bar.width"
+                      [style.height.px]="barHeight"
+                      [style.background]="bar.assignment.projectColor"
+                      [class.bar--done]="bar.assignment.status === 'done'"
+                      [title]="bar.tooltip"
+                    >
+                      <span class="bar__label truncate">{{ bar.assignment.name }}</span>
+                    </a>
+                  }
+                }
+              </div>
+
+              @if (todayX(); as x) {
+                <div class="today" [style.left.px]="x" aria-hidden="true">
+                  <span class="today__flag">امروز</span>
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- ------------------------------------------------------------- panels -->
+    <div class="panels">
+      <section class="panel">
+        <h2 class="panel__head">
+          کارهای بدون مسئول
+          <span class="panel__count">{{ unassigned().length | digits: settings.persianDigits() }}</span>
+        </h2>
+        @if (unassigned().length === 0) {
+          <p class="panel__empty">همهٔ کارها مسئول دارند.</p>
+        } @else {
+          <ul class="rows">
+            @for (item of unassigned(); track item.id) {
+              <li>
+                <a class="row" [routerLink]="['/projects', item.projectId]">
+                  <span class="row__dot" [style.background]="item.teamColor"></span>
+                  <span class="row__name truncate">{{ item.name }}</span>
+                  <span class="row__meta">{{ item.teamName }}</span>
+                  <bdi class="row__date">{{ short(item.startDate) }}</bdi>
+                </a>
+              </li>
+            }
+          </ul>
+        }
+      </section>
+
+      <section class="panel">
+        <h2 class="panel__head">
+          بیش‌بارها
+          <span class="panel__count">{{ overloadedPeople().length | digits: settings.persianDigits() }}</span>
+        </h2>
+        @if (overloadedPeople().length === 0) {
+          <p class="panel__empty">هیچ‌کس هم‌زمان بیش از یک کار ندارد.</p>
+        } @else {
+          <ul class="rows">
+            @for (person of overloadedPeople(); track person.user.id) {
+              <li class="stack">
+                <div class="stack__head">
+                  <pma-avatar [user]="person.user" [size]="22" />
+                  <span class="row__name truncate">{{ person.user.name }}</span>
+                  <span class="chip chip--danger">
+                    تا {{ person.peakConcurrency | digits: settings.persianDigits() }} کار هم‌زمان
+                  </span>
+                </div>
+                @for (period of person.overloads; track period.start) {
+                  <div class="stack__item">
+                    <bdi>{{ short(period.start) }} ← {{ short(period.end) }}</bdi>
+                    <span class="subtle">
+                      {{ period.days | digits: settings.persianDigits() }} روز کاری ·
+                      {{ period.peak | digits: settings.persianDigits() }} کار
+                    </span>
+                  </div>
+                }
+              </li>
+            }
+          </ul>
+        }
+      </section>
+
+      <section class="panel">
+        <h2 class="panel__head">
+          ظرفیت آزاد
+          <span class="panel__count">{{ availablePeople().length | digits: settings.persianDigits() }}</span>
+        </h2>
+        @if (availablePeople().length === 0) {
+          <p class="panel__empty">در این بازه کسی وقت آزاد ندارد.</p>
+        } @else {
+          <ul class="rows">
+            @for (person of availablePeople(); track person.user.id) {
+              <li>
+                <div class="row row--static">
+                  <pma-avatar [user]="person.user" [size]="22" />
+                  <span class="row__name truncate">{{ person.user.name }}</span>
+                  <span class="row__meta">
+                    {{ person.freeDays | digits: settings.persianDigits() }} روز آزاد
+                  </span>
+                  @if (person.nextFreeFrom) {
+                    <bdi class="row__date">از {{ short(person.nextFreeFrom) }}</bdi>
+                  }
+                </div>
+              </li>
+            }
+          </ul>
+        }
+      </section>
+
+      <section class="panel">
+        <h2 class="panel__head">
+          عقب‌افتاده
+          <span class="panel__count">{{ overdue().length | digits: settings.persianDigits() }}</span>
+        </h2>
+        @if (overdue().length === 0) {
+          <p class="panel__empty">هیچ کاری از تاریخ پایانش نگذشته است.</p>
+        } @else {
+          <ul class="rows">
+            @for (item of overdue(); track item.id) {
+              <li>
+                <a class="row" [routerLink]="['/projects', item.projectId]">
+                  <pma-avatar [user]="userById(item.assigneeId)" [size]="22" />
+                  <span class="row__name truncate">{{ item.name }}</span>
+                  <span class="row__meta truncate">{{ assigneeName(item) }}</span>
+                  <bdi class="row__date row__date--late">{{ short(item.endDate) }}</bdi>
+                </a>
+              </li>
+            }
+          </ul>
+        }
+      </section>
+    </div>
+  }
+</div>

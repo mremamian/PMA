@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pma-client",
+      "cwd": "client",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start", "--", "--port", "4200"],
+      "port": 4200
+    },
+    {
+      "name": "pma-server",
+      "cwd": "server",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3001
+    }
+  ]
+}

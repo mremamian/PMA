@@ -1,0 +1,321 @@
+/* Product Manager Assistant — global styles and design tokens. */
+
+/**
+ * Vazirmatn — the standard modern Persian typeface. Served from the app's own
+ * assets rather than a font CDN: Google Fonts is unreliable from Iran, and a
+ * self-hosted font also works offline.
+ *
+ * One variable file covers every weight from 100 to 900. It is copied out of
+ * the `vazirmatn` package into public/fonts by `npm run font:sync`; the
+ * upstream filename contains square brackets, which both URL matching and
+ * shell globbing mangle, so it is renamed on the way in.
+ */
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/vazirmatn.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --surface: #ffffff;
+  --surface-sunken: #f6f7f9;
+  --surface-raised: #ffffff;
+  --surface-hover: #f1f3f7;
+  --surface-active: #e8ebf2;
+
+  /* Text */
+  --text: #16181d;
+  --text-muted: #5c6472;
+  --text-subtle: #8b93a3;
+  --text-inverse: #ffffff;
+
+  /* Lines */
+  --border: #e3e6ec;
+  --border-strong: #cfd4de;
+  --grid-line: #eef0f4;
+  --grid-line-strong: #dfe3ea;
+
+  /* Accents */
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-soft: #eef2ff;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --warning: #d97706;
+  --warning-soft: #fffbeb;
+  --success: #059669;
+  --success-soft: #ecfdf5;
+
+  /* Chart */
+  --today-line: #ef4444;
+  /* Thursday and Friday are not working days; tinted red so a bar crossing
+     them visibly costs nothing. */
+  --weekend-band: #fdeaea;
+  --weekend-line: #f6cccc;
+  --weekend-text: #b91c1c;
+  --arrow: #94a3b8;
+  --arrow-conflict: #ef4444;
+
+  --radius: 8px;
+  --radius-sm: 5px;
+  --radius-lg: 12px;
+
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / 6%);
+  --shadow: 0 4px 12px rgb(16 24 40 / 8%);
+  --shadow-lg: 0 12px 32px rgb(16 24 40 / 14%);
+
+  --row-height: 46px;
+  --sidebar-width: 244px;
+  --header-height: 62px;
+
+  /* Vazirmatn first everywhere: it carries full Latin coverage as well as
+     Persian, so mixed strings stay in one typeface instead of switching
+     mid-sentence. */
+  --font: 'Vazirmatn', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-fa: 'Vazirmatn', 'Segoe UI', 'Tahoma', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--surface-sunken);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Persian text needs its own face and a touch more line height. */
+.fa-text {
+  font-family: var(--font-fa);
+  line-height: 1.7;
+}
+
+/* ----------------------------------------------------------- primitives -- */
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 120ms ease, border-color 120ms ease;
+
+  &:hover:not(:disabled) {
+    background: var(--surface-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-inverse);
+
+  &:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
+}
+
+.btn--danger {
+  color: var(--danger);
+  border-color: #f3c9c9;
+
+  &:hover:not(:disabled) {
+    background: var(--danger-soft);
+  }
+}
+
+.btn--ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.btn--icon {
+  padding: 6px;
+  min-width: 30px;
+}
+
+.btn--sm {
+  padding: 4px 9px;
+  font-size: 12px;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+
+  &:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  &:disabled {
+    background: var(--surface-sunken);
+    color: var(--text-subtle);
+  }
+}
+
+textarea {
+  resize: vertical;
+  min-height: 66px;
+}
+
+label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+}
+
+.field {
+  margin-bottom: 14px;
+}
+
+.field__error {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.chip--success { background: var(--success-soft); color: var(--success); border-color: #b7ebd8; }
+.chip--warning { background: var(--warning-soft); color: var(--warning); border-color: #fde5b0; }
+.chip--danger  { background: var(--danger-soft);  color: var(--danger);  border-color: #f6cccc; }
+.chip--accent  { background: var(--accent-soft);  color: var(--accent);  border-color: #d5daff; }
+
+.muted { color: var(--text-muted); }
+.subtle { color: var(--text-subtle); }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Thin, unobtrusive scrollbars — the chart has a lot of them. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+*::-webkit-scrollbar { width: 11px; height: 11px; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+  border: 3px solid var(--surface-sunken);
+}
+
+*::-webkit-scrollbar-thumb:hover { background: #b6bdc9; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

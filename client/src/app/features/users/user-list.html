@@ -1,0 +1,133 @@
+﻿<div class="page">
+  <header class="page__head">
+    <div>
+      <h1 class="page__title">افراد</h1>
+      <p class="page__subtitle">
+        هر کسی که می‌تواند مسئول یک ماژول باشد. این فهرست میان همهٔ پروژه‌ها مشترک است.
+      </p>
+    </div>
+
+    <div class="page__actions">
+      <input
+        type="search"
+        class="page__search"
+        placeholder="جستجوی افراد…"
+        [value]="search()"
+        (input)="search.set($any($event.target).value)"
+        aria-label="جستجوی افراد"
+      />
+      <button type="button" class="btn btn--primary" (click)="editing.set('new')">
+        + فرد جدید
+      </button>
+    </div>
+  </header>
+
+  @if (error(); as message) {
+    <div class="banner banner--error" role="alert">
+      <span>{{ message }}</span>
+      <div class="banner__actions">
+        <button type="button" class="btn btn--sm" (click)="load()">تلاش دوباره</button>
+        <button type="button" class="btn btn--sm btn--ghost" (click)="error.set(null)">
+          بستن
+        </button>
+      </div>
+    </div>
+  }
+
+  @if (loading()) {
+    <div class="state">
+      <span class="spinner"></span>
+      <span>در حال بارگذاری افراد…</span>
+    </div>
+  } @else if (visibleUsers().length === 0) {
+    <div class="state state--empty">
+      @if (search()) {
+        <p>کسی با «{{ search() }}» پیدا نشد.</p>
+        <button type="button" class="btn btn--sm" (click)="search.set('')">پاک کردن جستجو</button>
+      } @else {
+        <p class="state__title">هنوز کسی ثبت نشده</p>
+        <p class="muted">
+          اعضای تیم‌ها را اضافه کنید تا بتوانید ماژول‌های هر نمودار را به آن‌ها بسپارید.
+        </p>
+        <button type="button" class="btn btn--primary" (click)="editing.set('new')">
+          + فرد جدید
+        </button>
+      }
+    </div>
+  } @else {
+    @for (group of groups(); track group.key) {
+      <section class="group">
+        <h2 class="group__head">
+          <span>{{ group.label }}</span>
+          <span class="group__count">{{ group.users.length | digits: settings.persianDigits() }}</span>
+        </h2>
+
+        <ul class="grid">
+          @for (user of group.users; track user.id) {
+            <li class="card person">
+              <button
+                type="button"
+                class="person__main"
+                (click)="editing.set(user)"
+                [attr.aria-label]="'ویرایش ' + user.name"
+              >
+                <pma-avatar [user]="user" [size]="42" />
+
+                <div class="person__text">
+                  <span class="person__name truncate">{{ user.name }}</span>
+                  @if (user.title) {
+                    <span class="person__title truncate">{{ user.title }}</span>
+                  }
+                  @if (user.email) {
+                    <bdi class="person__email truncate">{{ user.email }}</bdi>
+                  }
+                </div>
+              </button>
+
+              <div class="person__foot">
+                <span class="chip">{{ (user.assignedModuleCount ?? 0) | digits: settings.persianDigits() }} ماژول</span>
+                <span class="spacer"></span>
+                <button type="button" class="btn btn--sm btn--ghost" (click)="editing.set(user)">
+                  ویرایش
+                </button>
+                <button
+                  type="button"
+                  class="btn btn--sm btn--ghost btn--danger"
+                  (click)="deleting.set(user)"
+                  [attr.aria-label]="'حذف ' + user.name"
+                >
+                  حذف
+                </button>
+              </div>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+  }
+
+  <p class="page__footnote">
+    دنبال نمودار می‌گردید؟ <a routerLink="/projects">بازگشت به پروژه‌ها</a>
+  </p>
+</div>
+
+@if (editing()) {
+  <pma-user-editor
+    [user]="editingUser()"
+    [teams]="teams()"
+    (saved)="save($event)"
+    (deleted)="requestDelete()"
+    (cancelled)="editing.set(null)"
+  />
+}
+
+@if (deleting(); as user) {
+  <pma-confirm-dialog
+    title="حذف فرد"
+    [message]="user.name + ' از فهرست افراد حذف شود؟'"
+    [detail]="deleteDetail(user)"
+    confirmLabel="حذف فرد"
+    (confirmed)="confirmDelete()"
+    (cancelled)="deleting.set(null)"
+  />
+}

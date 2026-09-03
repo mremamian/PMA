@@ -1,0 +1,140 @@
+<div class="page">
+  <header class="page__head">
+    <div>
+      <h1 class="page__title">تیم‌ها</h1>
+      <p class="page__subtitle">
+        تیم‌ها میان همهٔ پروژه‌ها مشترک‌اند و در نمودار هر پروژه به همین ترتیب نمایش داده می‌شوند.
+      </p>
+    </div>
+
+    <div class="page__actions">
+      <button type="button" class="btn btn--primary" (click)="editing.set('new')">
+        + تیم جدید
+      </button>
+    </div>
+  </header>
+
+  @if (error(); as message) {
+    <div class="banner banner--error" role="alert">
+      <span>{{ message }}</span>
+      <div class="banner__actions">
+        <button type="button" class="btn btn--sm" (click)="load()">تلاش دوباره</button>
+        <button type="button" class="btn btn--sm btn--ghost" (click)="error.set(null)">
+          بستن
+        </button>
+      </div>
+    </div>
+  }
+
+  @if (loading()) {
+    <div class="state">
+      <span class="spinner"></span>
+      <span>در حال بارگذاری تیم‌ها…</span>
+    </div>
+  } @else if (teams().length === 0) {
+    <div class="state state--empty">
+      <p class="state__title">هنوز تیمی ساخته نشده</p>
+      <p class="muted">
+        تیم بسازید تا در نمودار همهٔ پروژه‌ها یک ردیف داشته باشد.
+      </p>
+      <button type="button" class="btn btn--primary" (click)="editing.set('new')">
+        + تیم جدید
+      </button>
+    </div>
+  } @else {
+    <ul class="list">
+      @for (team of teams(); track team.id; let i = $index, last = $last) {
+        <li class="card team">
+          <span class="team__swatch" [style.background]="team.color"></span>
+
+          <div class="team__body">
+            <div class="team__top">
+              <h2 class="team__name truncate">{{ team.name }}</h2>
+              @if (team.kind === 'external') {
+                <span class="chip chip--warning">وابستگی بیرونی</span>
+              }
+            </div>
+
+            <div class="team__meta">
+              <span class="chip">
+                {{ (team.moduleCount ?? 0) | digits: settings.persianDigits() }} ماژول
+              </span>
+              <span class="chip">
+                {{ (team.projectCount ?? 0) | digits: settings.persianDigits() }} پروژه
+              </span>
+              <span class="chip">
+                {{ (team.memberCount ?? 0) | digits: settings.persianDigits() }} عضو
+              </span>
+            </div>
+          </div>
+
+          <div class="team__members">
+            @for (member of membersOf(team.id); track member.id) {
+              <pma-avatar [user]="member" [size]="26" />
+            }
+            @if (membersOf(team.id).length === 0) {
+              <span class="team__nobody">بدون عضو</span>
+            }
+          </div>
+
+          <div class="team__tools">
+            <button
+              type="button"
+              class="icon"
+              (click)="move(team.id, -1)"
+              [disabled]="i === 0"
+              title="انتقال به بالا"
+              aria-label="انتقال تیم به بالا"
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              class="icon"
+              (click)="move(team.id, 1)"
+              [disabled]="last"
+              title="انتقال به پایین"
+              aria-label="انتقال تیم به پایین"
+            >
+              ↓
+            </button>
+            <button type="button" class="btn btn--sm btn--ghost" (click)="editing.set(team)">
+              ویرایش
+            </button>
+            <button
+              type="button"
+              class="btn btn--sm btn--ghost btn--danger"
+              (click)="deleting.set(team)"
+              [attr.aria-label]="'حذف ' + team.name"
+            >
+              حذف
+            </button>
+          </div>
+        </li>
+      }
+    </ul>
+  }
+
+  <p class="page__footnote">
+    اعضای تیم‌ها را در <a routerLink="/people">صفحهٔ افراد</a> مدیریت کنید.
+  </p>
+</div>
+
+@if (editing()) {
+  <pma-team-editor
+    [team]="editingTeam()"
+    (saved)="save($event)"
+    (cancelled)="editing.set(null)"
+  />
+}
+
+@if (deleting(); as team) {
+  <pma-confirm-dialog
+    title="حذف تیم"
+    [message]="'تیم «' + team.name + '» حذف شود؟'"
+    [detail]="deleteDetail(team)"
+    confirmLabel="حذف تیم"
+    (confirmed)="confirmDelete()"
+    (cancelled)="deleting.set(null)"
+  />
+}

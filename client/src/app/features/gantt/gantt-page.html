@@ -1,0 +1,344 @@
+@if (store.project(); as project) {
+  <header class="page-head">
+    <div class="page-head__left">
+      <a class="back" routerLink="/projects" aria-label="بازگشت به پروژه‌ها">→</a>
+
+      <div class="page-head__title">
+        <div class="page-head__row">
+          <span class="page-head__dot" [style.background]="project.color"></span>
+          <h1>{{ project.name }}</h1>
+          @if (store.pending() > 0) {
+            <span class="saving"><span class="spinner"></span> در حال ذخیره…</span>
+          }
+        </div>
+        <p class="page-head__dates">
+          <bdi>{{ long(project.startDate) }}</bdi> — <bdi>{{ long(project.endDate) }}</bdi>
+        </p>
+      </div>
+    </div>
+
+    <div class="page-head__actions">
+      <button type="button" class="btn btn--sm" (click)="projectDialogOpen.set(true)">
+        ویرایش پروژه
+      </button>
+      <button type="button" class="btn btn--sm" (click)="openTeamPicker()">تیم‌های پروژه</button>
+      <button type="button" class="btn btn--sm btn--primary" (click)="openNewModule()">
+        + ماژول
+      </button>
+    </div>
+  </header>
+
+  <!-- ------------------------------------------------------------- stats -->
+  <section class="stats" aria-label="خلاصهٔ پروژه">
+    @let s = store.stats();
+    <div class="stat">
+      <span class="stat__value">{{ s.modules | digits: settings.persianDigits() }}</span>
+      <span class="stat__label">ماژول</span>
+    </div>
+    <div class="stat">
+      <span class="stat__value">{{ s.milestones | digits: settings.persianDigits() }}</span>
+      <span class="stat__label">نقطهٔ عطف</span>
+    </div>
+    <div class="stat">
+      <span class="stat__value">{{ s.teams | digits: settings.persianDigits() }}</span>
+      <span class="stat__label">ردیف ({{ s.externalRows | digits: settings.persianDigits() }} بیرونی)</span>
+    </div>
+    <div class="stat">
+      <span class="stat__value">{{ s.dependencies | digits: settings.persianDigits() }}</span>
+      <span class="stat__label">وابستگی</span>
+    </div>
+    <div class="stat" [class.stat--danger]="s.conflicts > 0">
+      <span class="stat__value">{{ s.conflicts | digits: settings.persianDigits() }}</span>
+      <span class="stat__label">تداخل زمان‌بندی</span>
+    </div>
+    <div class="stat" [class.stat--warning]="s.overdue > 0">
+      <span class="stat__value">{{ s.overdue | digits: settings.persianDigits() }}</span>
+      <span class="stat__label">عقب‌افتاده</span>
+    </div>
+    <div class="stat">
+      <span class="stat__value">{{ s.percentComplete | digits: settings.persianDigits() }}٪</span>
+      <span class="stat__label">میانگین پیشرفت</span>
+    </div>
+  </section>
+
+  <!-- ----------------------------------------------------------- toolbar -->
+  <div class="toolbar">
+    <div class="toolbar__group" role="group" aria-label="بزرگ‌نمایی">
+      @for (preset of zoomPresets; track preset.id) {
+        <button
+          type="button"
+          class="seg"
+          [class.seg--active]="settings.zoom() === preset.id"
+          (click)="setZoom(preset.id)"
+        >
+          {{ zoomLabels[preset.id] }}
+        </button>
+      }
+    </div>
+
+    <label class="toggle">
+      <input
+        type="checkbox"
+        [checked]="settings.cascade()"
+        (change)="settings.cascade.set($any($event.target).checked)"
+      />
+      <span>با جابه‌جایی هر میله، ماژول‌های وابسته هم جابه‌جا شوند</span>
+    </label>
+
+    <label class="toggle">
+      <input
+        type="checkbox"
+        [checked]="settings.showDependencies()"
+        (change)="settings.showDependencies.set($any($event.target).checked)"
+      />
+      <span>نمایش پیکان‌های وابستگی</span>
+    </label>
+
+    <!-- Teams are shared, so a chart lists every team. This folds away the
+         ones with nothing planned in this project. -->
+    <label class="toggle">
+      <input
+        type="checkbox"
+        [checked]="settings.hideEmptyRows()"
+        (change)="settings.hideEmptyRows.set($any($event.target).checked)"
+      />
+      <span>فقط ردیف‌هایی که در این پروژه کار دارند</span>
+    </label>
+
+    <span class="toolbar__spacer"></span>
+
+    <span class="toolbar__hint">
+      برای جابه‌جایی میله را بکشید · برای تغییر طول، لبه‌ها را بکشید · برای پیوند، نقطه را بکشید
+    </span>
+  </div>
+
+  @if (store.error(); as message) {
+    <div class="banner banner--error" role="alert">
+      <span>{{ message }}</span>
+      <button type="button" class="btn btn--sm" (click)="store.dismissError()">بستن</button>
+    </div>
+  }
+
+  @if (store.violations().length) {
+    <div class="banner banner--warning" role="status">
+      <span>
+        {{ store.violations().length | digits: settings.persianDigits() }} وابستگی نقض شده است — یک ماژول پیش از آنکه پیش‌نیازش
+        اجازه دهد شروع می‌شود.
+      </span>
+    </div>
+  }
+
+  <!-- ------------------------------------------------------------- chart -->
+  <div class="workspace">
+    <pma-gantt-chart
+      (editModule)="openModuleEditor($event)"
+      (editTeam)="teamDialog.set($event)"
+      (deleteTeam)="unlinkingTeam.set($event)"
+      (addModule)="openNewModule($event)"
+      (inspectDependency)="dependencyDialog.set($event)"
+    />
+
+    @if (store.selectedModule(); as module) {
+      <aside class="details">
+        <header class="details__head">
+          <h2 class="truncate">{{ module.name }}</h2>
+          <button
+            type="button"
+            class="btn btn--sm btn--ghost"
+            (click)="store.selectedModuleId.set(null)"
+            aria-label="بستن جزئیات"
+          >
+            ×
+          </button>
+        </header>
+
+        <div class="details__body">
+          <div class="details__grid">
+            <span class="details__key">ردیف</span>
+            <span>{{ selectedTeam()?.name ?? '—' }}</span>
+
+            <span class="details__key">وضعیت</span>
+            <span>{{ statusLabels[module.status] }}</span>
+
+            <span class="details__key">شروع</span>
+            <bdi>{{ long(module.startDate) }}</bdi>
+
+            <span class="details__key">پایان</span>
+            <bdi>{{ long(module.endDate) }}</bdi>
+
+            <span class="details__key">مدت</span>
+            <span>{{ store.durationOf(module) | digits: settings.persianDigits() }} روز</span>
+
+            @if (module.kind !== 'milestone') {
+              <span class="details__key">پیشرفت</span>
+              <span>{{ module.progress | digits: settings.persianDigits() }}٪</span>
+            }
+          </div>
+
+          @if (module.description) {
+            <p class="details__notes">{{ module.description }}</p>
+          }
+
+          <h3 class="details__section">مسئول</h3>
+          <div class="assignee">
+            <pma-avatar [user]="store.assigneeOf(module)" [size]="32" />
+            <div class="assignee__text">
+              <span class="assignee__name truncate">
+                {{ store.assigneeOf(module)?.name ?? 'بدون مسئول' }}
+              </span>
+              <span class="assignee__title truncate">
+                {{ store.assigneeOf(module)?.title || '—' }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Reassigning is the most common edit on this panel, so it is here
+               rather than behind the full module dialog. -->
+          <select
+            class="assignee__select"
+            [value]="module.assigneeId ?? ''"
+            (change)="store.assignModule(module.id, $any($event.target).value || null)"
+            aria-label="تغییر مسئول این ماژول"
+          >
+            <option value="" [selected]="!module.assigneeId">— بدون مسئول —</option>
+            <!-- Limited to the row's own team; see BoardStore.assignableFor(). -->
+            @for (user of store.assignableFor(module); track user.id) {
+              <option [value]="user.id" [selected]="user.id === module.assigneeId">
+                {{ user.name }}{{ user.title ? ' — ' + user.title : '' }}
+              </option>
+            }
+          </select>
+          @if (!store.membersOf(module.teamId).length) {
+            <p class="details__empty">
+              هیچ‌کس در این ردیف عضو نیست؛ همهٔ افراد نمایش داده می‌شوند.
+            </p>
+          }
+
+          <h3 class="details__section">وابسته به</h3>
+          @if (selectedLinks().incoming.length) {
+            <ul class="links">
+              @for (link of selectedLinks().incoming; track link.dependency.id) {
+                <li>
+                  <button type="button" class="link" (click)="dependencyDialog.set(link.dependency)">
+                    <span class="link__type">{{ link.dependency.type }}</span>
+                    <span class="truncate">{{ link.other?.name ?? 'نامشخص' }}</span>
+                  </button>
+                </li>
+              }
+            </ul>
+          } @else {
+            <p class="details__empty">هیچ پیش‌نیازی ندارد؛ هر زمان که برنامه‌ریزی شود آغاز می‌شود.</p>
+          }
+
+          <h3 class="details__section">پیش‌نیاز این‌هاست</h3>
+          @if (selectedLinks().outgoing.length) {
+            <ul class="links">
+              @for (link of selectedLinks().outgoing; track link.dependency.id) {
+                <li>
+                  <button type="button" class="link" (click)="dependencyDialog.set(link.dependency)">
+                    <span class="link__type">{{ link.dependency.type }}</span>
+                    <span class="truncate">{{ link.other?.name ?? 'نامشخص' }}</span>
+                  </button>
+                </li>
+              }
+            </ul>
+          } @else {
+            <p class="details__empty">هیچ ماژولی به این وابسته نیست.</p>
+          }
+        </div>
+
+        <footer class="details__foot">
+          <button type="button" class="btn btn--sm" (click)="openModuleEditor(module)">
+            ویرایش ماژول
+          </button>
+          <button
+            type="button"
+            class="btn btn--sm btn--danger"
+            (click)="deletingModule.set(module)"
+          >
+            حذف
+          </button>
+        </footer>
+      </aside>
+    }
+  </div>
+} @else if (store.loading()) {
+  <div class="state">
+    <span class="spinner"></span>
+    <span>در حال بارگذاری نمودار…</span>
+  </div>
+} @else {
+  <div class="state">
+    <p>{{ store.error() ?? 'پروژه پیدا نشد.' }}</p>
+    <a class="btn" routerLink="/projects">بازگشت به پروژه‌ها</a>
+  </div>
+}
+
+<!-- ------------------------------------------------------------- dialogs -->
+
+@if (projectDialogOpen()) {
+  <pma-project-editor
+    [project]="store.project()"
+    (saved)="saveProject($event)"
+    (cancelled)="projectDialogOpen.set(false)"
+  />
+}
+
+@if (teamDialog(); as team) {
+  <pma-team-editor [team]="team" (saved)="saveTeam($event)" (cancelled)="teamDialog.set(null)" />
+}
+
+@if (teamPickerOpen()) {
+  <pma-team-picker
+    [allTeams]="allTeams()"
+    [linkedIds]="linkedTeamIds()"
+    [moduleCounts]="moduleCountsByTeam()"
+    (saved)="saveTeamSelection($event)"
+    (cancelled)="teamPickerOpen.set(false)"
+  />
+}
+
+@if (moduleDialog()) {
+  <pma-module-editor
+    [module]="editingModule()"
+    [teams]="store.teams()"
+    [users]="store.users()"
+    [defaultTeamId]="defaultTeamId()"
+    (saved)="saveModule($event)"
+    (deleted)="requestDeleteModule()"
+    (cancelled)="moduleDialog.set(null)"
+  />
+}
+
+@if (dependencyDialog(); as dependency) {
+  <pma-dependency-editor
+    [dependency]="dependency"
+    [from]="dependencyEndpoints().from"
+    [to]="dependencyEndpoints().to"
+    (saved)="saveDependency($event)"
+    (removed)="removeDependency()"
+    (cancelled)="dependencyDialog.set(null)"
+  />
+}
+
+@if (unlinkingTeam(); as team) {
+  <pma-confirm-dialog
+    title="حذف تیم از این پروژه"
+    [message]="'تیم «' + team.name + '» از این پروژه برداشته شود؟'"
+    [detail]="unlinkDetail(team)"
+    confirmLabel="حذف از پروژه"
+    (confirmed)="confirmUnlinkTeam()"
+    (cancelled)="unlinkingTeam.set(null)"
+  />
+}
+
+@if (deletingModule(); as module) {
+  <pma-confirm-dialog
+    title="حذف ماژول"
+    [message]="'ماژول «' + module.name + '» حذف شود؟'"
+    [detail]="moduleDeleteDetail(module)"
+    confirmLabel="حذف ماژول"
+    (confirmed)="confirmDeleteModule()"
+    (cancelled)="deletingModule.set(null)"
+  />
+}

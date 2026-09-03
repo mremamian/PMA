@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.angular/
+*.log
+npm-debug.log*
+
+# Local secrets — commit .env.example instead.
+.env
+server/.env
+
+.DS_Store
+Thumbs.db
+.idea/

@@ -1,0 +1,43 @@
+<header class="topbar">
+  <a class="topbar__brand" routerLink="/projects">
+    <span class="topbar__mark" aria-hidden="true">PM</span>
+    <span class="topbar__title">دستیار مدیر محصول</span>
+  </a>
+
+  <nav class="topbar__nav" aria-label="ناوبری اصلی">
+    <a routerLink="/projects" routerLinkActive="is-active">پروژه‌ها</a>
+    <a routerLink="/teams" routerLinkActive="is-active">تیم‌ها</a>
+    <a routerLink="/people" routerLinkActive="is-active">افراد</a>
+    <a routerLink="/reports" routerLinkActive="is-active">گزارش‌ها</a>
+  </nav>
+
+  <div class="topbar__right">
+    <bdi class="topbar__today">{{ today() }}</bdi>
+
+    <button
+      type="button"
+      class="btn btn--sm"
+      (click)="settings.toggleLocale()"
+      [title]="
+        settings.locale() === 'fa'
+          ? 'نمایش نام ماه‌ها به لاتین'
+          : 'نمایش نام ماه‌ها به فارسی'
+      "
+    >
+      {{ settings.locale() === 'fa' ? 'ماه: فارسی' : 'ماه: لاتین' }}
+    </button>
+
+    <button
+      type="button"
+      class="btn btn--sm"
+      (click)="settings.persianDigits.set(!settings.persianDigits())"
+      title="تغییر شکل ارقام"
+    >
+      {{ settings.persianDigits() ? '۱۲۳' : '123' }}
+    </button>
+  </div>
+</header>
+
+<main class="app-main">
+  <router-outlet />
+</main>

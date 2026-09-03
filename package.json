@@ -1,0 +1,19 @@
+{
+  "name": "pma",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Product Manager Assistant — Node/Express + PostgreSQL API with an Angular Gantt chart on the Jalali (Shamsi) calendar",
+  "scripts": {
+    "setup": "npm --prefix server install && npm --prefix client install",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f db",
+    "migrate": "npm --prefix server run migrate",
+    "seed": "npm --prefix server run seed",
+    "db:reset": "npm --prefix server run db:reset",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client start",
+    "build": "npm --prefix client run build",
+    "check:jalali": "npm --prefix client run check:jalali"
+  }
+}

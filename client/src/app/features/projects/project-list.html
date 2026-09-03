@@ -1,0 +1,145 @@
+﻿<div class="page">
+  <header class="page__head">
+    <div>
+      <h1 class="page__title">پروژه‌ها</h1>
+      <p class="page__subtitle">
+        برای دیدن نمودار گانت یک پروژه را باز کنید، یا برنامهٔ تازه‌ای بسازید.
+      </p>
+    </div>
+
+    <div class="page__actions">
+      <input
+        type="search"
+        class="page__search"
+        placeholder="جستجوی پروژه…"
+        [value]="search()"
+        (input)="search.set($any($event.target).value)"
+        aria-label="جستجوی پروژه"
+      />
+      <button type="button" class="btn btn--primary" (click)="editing.set('new')">
+        + پروژهٔ جدید
+      </button>
+    </div>
+  </header>
+
+  @if (error(); as message) {
+    <div class="banner banner--error" role="alert">
+      <span>{{ message }}</span>
+      <div class="banner__actions">
+        <button type="button" class="btn btn--sm" (click)="load()">تلاش دوباره</button>
+        <button type="button" class="btn btn--sm btn--ghost" (click)="error.set(null)">
+          بستن
+        </button>
+      </div>
+    </div>
+  }
+
+  @if (loading()) {
+    <div class="state">
+      <span class="spinner"></span>
+      <span>در حال بارگذاری پروژه‌ها…</span>
+    </div>
+  } @else if (visibleProjects().length === 0) {
+    <div class="state state--empty">
+      @if (search()) {
+        <p>پروژه‌ای با «{{ search() }}» پیدا نشد.</p>
+        <button type="button" class="btn btn--sm" (click)="search.set('')">پاک کردن جستجو</button>
+      } @else {
+        <p class="state__title">هنوز پروژه‌ای ساخته نشده</p>
+        <p class="muted">
+          یک پروژه بسازید تا تیم‌ها، ماژول‌ها و وابستگی‌ها را بچینید.
+        </p>
+        <button type="button" class="btn btn--primary" (click)="editing.set('new')">
+          + پروژهٔ جدید
+        </button>
+      }
+    </div>
+  } @else {
+    <ul class="grid">
+      @for (project of visibleProjects(); track project.id) {
+        <li class="card project">
+          <span class="project__accent" [style.background]="project.color"></span>
+
+          <a class="project__main" [routerLink]="['/projects', project.id]">
+            <div class="project__top">
+              <h2 class="project__name truncate">{{ project.name }}</h2>
+              <span class="chip" [class]="statusClass(project.status)">
+                {{ statusLabels[project.status] }}
+              </span>
+            </div>
+
+            @if (project.description) {
+              <p class="project__description">{{ project.description }}</p>
+            }
+
+            <!-- <bdi> isolates each Persian date so the arrow between them
+                 keeps its direction instead of being reordered by bidi. -->
+            <div class="project__dates">
+              <bdi>{{ formatDate(project.startDate) }}</bdi>
+              <span class="project__arrow" aria-hidden="true">←</span>
+              <bdi>{{ formatDate(project.endDate) }}</bdi>
+            </div>
+
+            <div
+              class="project__progress"
+              [title]="elapsedPercent(project) + '٪ از بازهٔ زمانی سپری شده'"
+            >
+              <div
+                class="project__progress-fill"
+                [style.width.%]="elapsedPercent(project)"
+                [style.background]="project.color"
+              ></div>
+            </div>
+
+            <div class="project__meta">
+              <span class="chip">{{ (project.teamCount ?? 0) | digits: settings.persianDigits() }} ردیف</span>
+              <span class="chip">{{ (project.moduleCount ?? 0) | digits: settings.persianDigits() }} ماژول</span>
+              <span class="chip">{{ (project.dependencyCount ?? 0) | digits: settings.persianDigits() }} وابستگی</span>
+              @if (isOverdue(project)) {
+                <span class="chip chip--danger">از تاریخ پایان گذشته</span>
+              }
+            </div>
+          </a>
+
+          <div class="project__tools">
+            <button
+              type="button"
+              class="btn btn--sm btn--ghost"
+              (click)="editing.set(project)"
+              [attr.aria-label]="'ویرایش ' + project.name"
+            >
+              ویرایش
+            </button>
+            <button
+              type="button"
+              class="btn btn--sm btn--ghost btn--danger"
+              (click)="deleting.set(project)"
+              [attr.aria-label]="'حذف ' + project.name"
+            >
+              حذف
+            </button>
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</div>
+
+@if (editing()) {
+  <pma-project-editor
+    [project]="editingProject()"
+    (saved)="save($event)"
+    (cancelled)="editing.set(null)"
+  />
+}
+
+@if (deleting(); as project) {
+  <pma-confirm-dialog
+    title="حذف پروژه"
+    [message]="'پروژهٔ «' + project.name + '» حذف شود؟ این کار برگشت‌پذیر نیست.'"
+    [detail]="deleteDetail(project)"
+    confirmLabel="حذف پروژه"
+    (confirmed)="confirmDelete()"
+    (cancelled)="deleting.set(null)"
+  />
+}

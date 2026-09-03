@@ -1,0 +1,405 @@
+<!-- dir="ltr" even though the app is RTL: a timeline reads earliest-to-latest
+     left to right, and mirroring it would put the future on the left and flip
+     every dependency arrow. Labels inside are still Persian. -->
+<div
+  class="gantt"
+  #scroller
+  dir="ltr"
+  [class.gantt--dragging]="isDragging()"
+  [class.gantt--linking]="link() !== null"
+>
+  <div class="gantt__content" [style.width.px]="sidebarWidth + timeline().width">
+    <!-- ------------------------------------------------------------ header -->
+    <div class="head">
+      <div class="head__corner" dir="rtl" [style.width.px]="sidebarWidth">
+        <span class="head__corner-label">تیم‌ها و ردیف‌ها</span>
+        <button
+          type="button"
+          class="btn btn--sm btn--ghost"
+          (click)="scrollToToday()"
+          title="پرش به امروز"
+        >
+          امروز
+        </button>
+      </div>
+
+      <div class="head__bands" [style.width.px]="timeline().width">
+        <div class="band band--year">
+          @for (tick of yearTicks(); track tick.iso) {
+            <div
+              class="tick tick--year"
+              [style.left.px]="tick.x"
+              [style.width.px]="tick.width"
+              [class.fa-text]="settings.locale() === 'fa'"
+            >
+              {{ tick.label }}
+            </div>
+          }
+        </div>
+
+        <div class="band band--month">
+          @for (tick of monthTicks(); track tick.iso) {
+            <div
+              class="tick tick--month"
+              [style.left.px]="tick.x"
+              [style.width.px]="tick.width"
+              [class.fa-text]="settings.locale() === 'fa'"
+            >
+              {{ tick.label }}
+            </div>
+          }
+        </div>
+
+        @if (minorTicks().length) {
+          <div class="band band--minor">
+            @for (tick of minorTicks(); track tick.iso) {
+              <div
+                class="tick tick--minor"
+                [style.left.px]="tick.x"
+                [style.width.px]="tick.width"
+                [class.tick--weekend]="tick.isWeekend"
+                [class.tick--today]="tick.isToday"
+                [class.tick--month-start]="tick.startsMonth"
+              >
+                <span class="tick__label">{{ tick.label }}</span>
+                @if (tick.sublabel) {
+                  <span class="tick__sublabel">{{ tick.sublabel }}</span>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- -------------------------------------------------------------- body -->
+    <div class="body">
+      <!-- Row names are Persian, so the sidebar reads RTL even though the
+           timeline beside it stays LTR. -->
+      <div class="sidebar" dir="rtl" [style.width.px]="sidebarWidth">
+        @for (row of rows(); track row.team.id; let i = $index, last = $last) {
+          <div
+            class="rowhead"
+            [style.height.px]="row.height"
+            [class.rowhead--external]="row.team.kind === 'external'"
+            [class.rowhead--empty]="row.moduleCount === 0"
+          >
+            <button
+              type="button"
+              class="rowhead__toggle"
+              (click)="toggleRowCollapsed(row.team.id)"
+              [attr.aria-expanded]="!row.collapsed"
+              [title]="row.collapsed ? 'باز کردن ردیف' : 'جمع کردن ردیف'"
+            >
+              <span class="rowhead__chevron" [class.rowhead__chevron--collapsed]="row.collapsed">▾</span>
+            </button>
+
+            <span class="rowhead__swatch" [style.background]="row.team.color"></span>
+
+            <div class="rowhead__text">
+              <span class="rowhead__name truncate" [title]="row.team.name">{{ row.team.name }}</span>
+              <span class="rowhead__count">
+                @if (row.team.kind === 'external') {
+                  <span class="rowhead__badge">بیرونی</span>
+                }
+                {{ row.moduleCount | digits: settings.persianDigits() }} ماژول
+              </span>
+            </div>
+
+            <div class="rowhead__tools">
+              <button
+                type="button"
+                class="icon"
+                (click)="addModule.emit(row.team)"
+                [attr.aria-label]="'افزودن ماژول به ' + row.team.name"
+                title="افزودن ماژول"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                class="icon"
+                (click)="store.moveTeam(row.team.id, -1)"
+                [disabled]="i === 0"
+                aria-label="انتقال ردیف به بالا"
+                title="انتقال به بالا"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                class="icon"
+                (click)="store.moveTeam(row.team.id, 1)"
+                [disabled]="last"
+                aria-label="انتقال ردیف به پایین"
+                title="انتقال به پایین"
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                class="icon"
+                (click)="editTeam.emit(row.team)"
+                [attr.aria-label]="'ویرایش ' + row.team.name"
+                title="ویرایش ردیف"
+              >
+                ✎
+              </button>
+              <button
+                type="button"
+                class="icon icon--danger"
+                (click)="deleteTeam.emit(row.team)"
+                [attr.aria-label]="'حذف ' + row.team.name"
+                title="حذف ردیف"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+
+      <div
+        class="canvas"
+        #canvas
+        [style.width.px]="timeline().width"
+        [style.height.px]="canvasHeight()"
+        (pointerdown)="onCanvasPointerDown($event)"
+      >
+        <!-- Background: weekends, month gridlines, row separators -->
+        <div class="layer layer--background" aria-hidden="true">
+          @for (band of weekendBands(); track band.x) {
+            <div class="weekend" [style.left.px]="band.x" [style.width.px]="band.width"></div>
+          }
+
+          @for (tick of monthTicks(); track tick.iso) {
+            <div class="gridline gridline--month" [style.left.px]="tick.x"></div>
+          }
+
+          @for (row of rows(); track row.team.id) {
+            <div
+              class="rowband"
+              [style.top.px]="row.top"
+              [style.height.px]="row.height"
+              [class.rowband--external]="row.team.kind === 'external'"
+            ></div>
+          }
+        </div>
+
+        <!-- Dependency arrows -->
+        @if (settings.showDependencies()) {
+          <svg
+            class="layer layer--arrows"
+            [attr.width]="timeline().width"
+            [attr.height]="canvasHeight()"
+            aria-hidden="true"
+          >
+            <defs>
+              <marker
+                id="pma-arrow"
+                viewBox="0 0 8 8"
+                refX="7"
+                refY="4"
+                markerWidth="7"
+                markerHeight="7"
+                orient="auto-start-reverse"
+              >
+                <path d="M0 0 L8 4 L0 8 z" fill="var(--arrow)" />
+              </marker>
+              <marker
+                id="pma-arrow-conflict"
+                viewBox="0 0 8 8"
+                refX="7"
+                refY="4"
+                markerWidth="7"
+                markerHeight="7"
+                orient="auto-start-reverse"
+              >
+                <path d="M0 0 L8 4 L0 8 z" fill="var(--arrow-conflict)" />
+              </marker>
+            </defs>
+
+            @for (arrow of arrows(); track arrow.dependency.id) {
+              <path
+                class="arrow"
+                [class.arrow--conflict]="arrow.conflicted"
+                [attr.d]="arrow.path"
+                [attr.marker-end]="
+                  arrow.conflicted ? 'url(#pma-arrow-conflict)' : 'url(#pma-arrow)'
+                "
+              />
+              <!-- Invisible fat stroke so the thin arrow is still clickable. -->
+              <path
+                class="arrow__hit"
+                [attr.d]="arrow.path"
+                (click)="inspectDependency.emit(arrow.dependency)"
+              >
+                <title>وابستگی {{ arrow.dependency.type }} — برای ویرایش یا حذف کلیک کنید</title>
+              </path>
+            }
+
+            @if (linkPath(); as path) {
+              <path
+                class="arrow arrow--draft"
+                [class.arrow--invalid]="link()?.invalidReason"
+                [attr.d]="path"
+              />
+            }
+          </svg>
+        }
+
+        <!-- Bars -->
+        <div class="layer layer--bars">
+          @for (row of rows(); track row.team.id) {
+            @for (bar of row.bars; track bar.module.id) {
+              @if (bar.isMilestone) {
+                <div
+                  class="milestone"
+                  [attr.data-module-id]="bar.module.id"
+                  [style.left.px]="bar.x"
+                  [style.top.px]="bar.y + (barHeight - milestoneSize) / 2"
+                  [style.width.px]="milestoneSize"
+                  [style.height.px]="milestoneSize"
+                  [style.background]="bar.color"
+                  [class.milestone--selected]="bar.isSelected"
+                  [class.milestone--overdue]="bar.isOverdue"
+                  [class.milestone--target]="link()?.targetModuleId === bar.module.id"
+                  [title]="bar.tooltip"
+                  tabindex="0"
+                  role="button"
+                  [attr.aria-label]="bar.tooltip"
+                  (pointerdown)="onBarPointerDown($event, bar.module, 'move')"
+                  (click)="onSelectModule(bar.module)"
+                  (dblclick)="editModule.emit(bar.module)"
+                  (keydown)="onBarKeydown($event, bar.module)"
+                ></div>
+
+                <span
+                  class="milestone__label"
+                  [style.left.px]="bar.x + milestoneSize + 6"
+                  [style.top.px]="bar.y"
+                  [style.height.px]="barHeight"
+                >
+                  @if (bar.assignee) {
+                    <pma-avatar [user]="bar.assignee" [size]="16" />
+                  }
+                  {{ bar.label }}
+                </span>
+              } @else {
+                <div
+                  class="bar"
+                  [attr.data-module-id]="bar.module.id"
+                  [style.left.px]="bar.x"
+                  [style.top.px]="bar.y"
+                  [style.width.px]="bar.width"
+                  [style.height.px]="barHeight"
+                  [style.background]="bar.color"
+                  [class.bar--selected]="bar.isSelected"
+                  [class.bar--overdue]="bar.isOverdue"
+                  [class.bar--done]="bar.module.status === 'done'"
+                  [class.bar--blocked]="bar.module.status === 'blocked'"
+                  [class.bar--target]="link()?.targetModuleId === bar.module.id"
+                  [title]="bar.tooltip"
+                  tabindex="0"
+                  role="button"
+                  [attr.aria-label]="bar.tooltip"
+                  (pointerdown)="onBarPointerDown($event, bar.module, 'move')"
+                  (click)="onSelectModule(bar.module)"
+                  (dblclick)="editModule.emit(bar.module)"
+                  (keydown)="onBarKeydown($event, bar.module)"
+                >
+                  @if (bar.module.progress > 0) {
+                    <span class="bar__progress" [style.width.px]="bar.progressWidth"></span>
+                  }
+
+                  @if (bar.showAvatar) {
+                    <span
+                      class="bar__avatar"
+                      (pointerenter)="showAssignee(bar)"
+                      (pointerleave)="hideAssignee()"
+                    >
+                      <pma-avatar [user]="bar.assignee" [size]="18" />
+                    </span>
+                  }
+
+                  <span class="bar__label truncate">{{ bar.label }}</span>
+
+                  <span
+                    class="bar__handle bar__handle--start"
+                    (pointerdown)="onBarPointerDown($event, bar.module, 'resize-start')"
+                    aria-hidden="true"
+                  ></span>
+                  <span
+                    class="bar__handle bar__handle--end"
+                    (pointerdown)="onBarPointerDown($event, bar.module, 'resize-end')"
+                    aria-hidden="true"
+                  ></span>
+
+                  <span
+                    class="bar__linker"
+                    (pointerdown)="onLinkPointerDown($event, bar)"
+                    title="برای ساختن وابستگی، این نقطه را روی ماژول دیگری بکشید"
+                    aria-hidden="true"
+                  ></span>
+                </div>
+              }
+            }
+          }
+        </div>
+
+        <!-- Who a bar is assigned to, on hover. Lives outside the bar so it is
+             not clipped by the bar's own overflow. -->
+        @if (hoverCard(); as card) {
+          <div
+            class="usercard"
+            dir="rtl"
+            [style.left.px]="card.x"
+            [style.top.px]="card.y + barHeight + 7"
+            role="tooltip"
+          >
+            <pma-avatar [user]="card.user" [size]="34" />
+            <div class="usercard__text">
+              <span class="usercard__name">{{ card.user.name }}</span>
+              @if (card.user.title) {
+                <span class="usercard__title">{{ card.user.title }}</span>
+              }
+              @if (card.user.teamName) {
+                <span class="usercard__team">{{ card.user.teamName }}</span>
+              }
+              @if (card.user.email) {
+                <span class="usercard__email">{{ card.user.email }}</span>
+              }
+            </div>
+          </div>
+        }
+
+        <!-- Today marker -->
+        @if (todayX(); as x) {
+          <div class="today" [style.left.px]="x" aria-hidden="true">
+            <span class="today__flag">امروز</span>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+
+  <!-- Live readout while dragging -->
+  @if (dragHint(); as hint) {
+    <div class="draghint" role="status" dir="rtl">
+      <strong>{{ hint.name }}</strong>
+      <bdi>{{ hint.range }}</bdi>
+      <span class="draghint__days">{{ hint.days }} روز</span>
+      @if (hint.shifted !== 0) {
+        <span class="draghint__delta">
+          {{ hint.shifted > 0 ? '+' : '' }}{{ hint.shifted | digits: settings.persianDigits() }} روز
+        </span>
+      }
+    </div>
+  }
+
+  @if (link(); as state) {
+    <div class="linkhint" role="status" dir="rtl" [class.linkhint--invalid]="state.invalidReason">
+      {{ state.invalidReason ?? 'روی ماژول مقصد رها کنید تا به این یکی وابسته شود' }}
+    </div>
+  }
+</div>

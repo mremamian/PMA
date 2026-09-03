@@ -1,0 +1,25 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: pma-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pma
+      POSTGRES_PASSWORD: pma_dev_password
+      POSTGRES_DB: pma
+      # Keeps `date` comparisons predictable regardless of the host clock.
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      # Host port 5433: 5432 belongs to another project on this machine.
+      - "5433:5432"
+    volumes:
+      - pma-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pma -d pma"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pma-pgdata:
