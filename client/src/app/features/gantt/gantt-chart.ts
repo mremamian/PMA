@@ -27,10 +27,15 @@ import { DigitsPipe } from '../../shared/digits.pipe';
 import type { Dependency, ProjectModule, Team, User } from '../../core/models';
 
 /** Vertical space one stacked bar occupies inside a row. */
-const LANE_HEIGHT = 38;
-const BAR_HEIGHT = 24;
-const ROW_PADDING = 10;
-const MILESTONE_SIZE = 17;
+/**
+ * Row geometry. Bars carry a label, an avatar and drag handles, so they need
+ * enough height to stay legible rather than being packed as tightly as the
+ * dates allow.
+ */
+const LANE_HEIGHT = 52;
+const BAR_HEIGHT = 34;
+const ROW_PADDING = 16;
+const MILESTONE_SIZE = 22;
 /** Horizontal clearance for dependency elbows. */
 const ARROW_GAP = 11;
 
@@ -264,7 +269,7 @@ export class GanttChartComponent {
           isSelected: module.id === selectedId,
           assignee,
           // Below this the avatar would cover the whole bar and swallow its label.
-          showAvatar: !isMilestone && !!assignee && width >= 64,
+          showAvatar: !isMilestone && !!assignee && width >= 56,
         });
       }
 

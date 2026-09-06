@@ -66,11 +66,11 @@ export function workingDaysIn(window: WorkloadWindow): string[] {
 }
 
 /** Greedy interval packing, so parallel work is visibly stacked. */
-function packLanes(assignments: Assignment[]): Assignment[][] {
+export function packLanes(assignments: readonly Assignment[]): Assignment[][] {
   const lanes: Assignment[][] = [];
 
-  for (const assignment of [...assignments].sort((a, b) =>
-    a.startDate.localeCompare(b.startDate),
+  for (const assignment of [...assignments].sort(
+    (a, b) => a.startDate.localeCompare(b.startDate) || a.endDate.localeCompare(b.endDate),
   )) {
     const lane = lanes.find((existing) => {
       const last = existing[existing.length - 1];

@@ -3,37 +3,37 @@ import { RouterLink } from '@angular/router';
 
 import { ApiService, type ApiFailure } from '../../core/api.service';
 import { SettingsStore } from '../../core/settings.store';
-import {
-  addDays,
-  formatLong,
-  formatShort,
-  maxIso,
-  minIso,
-  todayIso,
-} from '../../core/jalali';
+import { addDays, formatLong, formatShort, maxIso, minIso, todayIso } from '../../core/jalali';
 import { Timeline, paddedRange, ZOOM_PRESETS, type ZoomLevel } from '../../core/timeline';
 import {
   assignmentDays,
   buildWorkload,
+  packLanes,
   type PersonWorkload,
 } from '../../core/workload';
 import {
   MODULE_STATUS_LABELS,
   type Assignment,
+  type User,
   type WorkloadReport,
 } from '../../core/models';
 import { AvatarComponent } from '../../shared/avatar';
 import { DigitsPipe } from '../../shared/digits.pipe';
+import { MultiSelectComponent, type MultiSelectOption } from '../../shared/multi-select';
 
-const LANE_HEIGHT = 26;
-const BAR_HEIGHT = 18;
-const ROW_PADDING = 10;
+const LANE_HEIGHT = 40;
+const BAR_HEIGHT = 26;
+const ROW_PADDING = 14;
 
 interface ReportBar {
   assignment: Assignment;
   x: number;
   width: number;
   y: number;
+  color: string;
+  assignee: User | null;
+  /** Only when the bar is wide enough that an avatar will not swamp it. */
+  showAvatar: boolean;
   tooltip: string;
 }
 
@@ -44,28 +44,39 @@ interface Band {
 }
 
 interface ReportRow {
-  workload: PersonWorkload;
+  key: string;
+  title: string;
+  subtitle: string;
+  /** Person rows show an avatar; project rows show a colour swatch. */
+  user: User | null;
+  color: string | null;
+  /** Link target for project rows. */
+  projectId: string | null;
   top: number;
   height: number;
   bars: ReportBar[];
-  /** Stretches with nothing scheduled. */
+  /** Capacity shading — meaningful for people only. */
   gaps: Band[];
-  /** Stretches carrying two or more things at once. */
   overloads: Band[];
+  workload: PersonWorkload | null;
+  moduleCount: number;
 }
 
 type SortKey = 'load' | 'free' | 'name';
+type GroupMode = 'person' | 'project';
 
 /**
  * Cross-project capacity report.
  *
- * The Gantt answers "what is the plan for this project"; this answers "what is
- * this person's life like", which no single board can show — someone can look
- * comfortable on one project while being triple-booked across three.
+ * Two ways to read the same assignments. Grouped by person it answers "what is
+ * this person's life like" — something no single board can show, since someone
+ * can look comfortable on one project while triple-booked across three.
+ * Grouped by project it answers the mirror question: who is actually on each
+ * piece of work, across the whole portfolio.
  */
 @Component({
   selector: 'pma-report-page',
-  imports: [RouterLink, AvatarComponent, DigitsPipe],
+  imports: [RouterLink, AvatarComponent, DigitsPipe, MultiSelectComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './report-page.html',
   styleUrl: './report-page.scss',
@@ -85,7 +96,7 @@ export class ReportPageComponent {
 
   protected readonly laneHeight = LANE_HEIGHT;
   protected readonly barHeight = BAR_HEIGHT;
-  protected readonly sidebarWidth = 236;
+  protected readonly sidebarWidth = 248;
   protected readonly today = todayIso();
 
   protected readonly report = signal<WorkloadReport | null>(null);
@@ -97,7 +108,9 @@ export class ReportPageComponent {
   /** Empty set means "no filter", which reads better than listing everything. */
   protected readonly projectFilter = signal<ReadonlySet<string>>(new Set());
   protected readonly teamFilter = signal<ReadonlySet<string>>(new Set());
-  protected readonly personSearch = signal('');
+  protected readonly userFilter = signal<ReadonlySet<string>>(new Set());
+
+  protected readonly groupBy = signal<GroupMode>('person');
   protected readonly onlyWithWork = signal(true);
   protected readonly sortBy = signal<SortKey>('load');
   protected readonly zoom = signal<ZoomLevel>('week');
@@ -126,31 +139,34 @@ export class ReportPageComponent {
     });
   }
 
-  /* ------------------------------------------------------------- selection */
+  /* ------------------------------------------------------- filter options */
 
-  private toggleIn(
-    target: ReturnType<typeof signal<ReadonlySet<string>>>,
-    id: string,
-  ): void {
-    target.update((current) => {
-      const next = new Set(current);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
-  }
+  protected readonly projectOptions = computed<MultiSelectOption[]>(() =>
+    (this.report()?.projects ?? []).map((p) => ({
+      id: p.id,
+      label: p.name,
+      color: p.color,
+      hint: `${p.moduleCount ?? 0}`,
+    })),
+  );
 
-  protected toggleProject(id: string): void {
-    this.toggleIn(this.projectFilter, id);
-  }
+  protected readonly teamOptions = computed<MultiSelectOption[]>(() =>
+    (this.report()?.teams ?? []).map((t) => ({ id: t.id, label: t.name, color: t.color })),
+  );
 
-  protected toggleTeam(id: string): void {
-    this.toggleIn(this.teamFilter, id);
-  }
+  protected readonly userOptions = computed<MultiSelectOption[]>(() =>
+    (this.report()?.users ?? []).map((u) => ({
+      id: u.id,
+      label: u.name,
+      color: u.avatarColor,
+      hint: u.teamName ?? undefined,
+    })),
+  );
 
   protected clearFilters(): void {
     this.projectFilter.set(new Set());
     this.teamFilter.set(new Set());
-    this.personSearch.set('');
+    this.userFilter.set(new Set());
     this.windowFrom.set(null);
     this.windowTo.set(null);
   }
@@ -159,13 +175,12 @@ export class ReportPageComponent {
     () =>
       this.projectFilter().size > 0 ||
       this.teamFilter().size > 0 ||
-      this.personSearch().trim().length > 0 ||
+      this.userFilter().size > 0 ||
       this.windowFrom() !== null,
   );
 
   /* ---------------------------------------------------------------- window */
 
-  /** Report window: the user's choice, else the span of all scheduled work. */
   protected readonly window = computed(() => {
     const report = this.report();
     const from = this.windowFrom();
@@ -189,7 +204,7 @@ export class ReportPageComponent {
     this.windowTo.set(addDays(this.today, days));
   }
 
-  /* --------------------------------------------------------------- filtered */
+  /* -------------------------------------------------------------- filtered */
 
   protected readonly filteredAssignments = computed<Assignment[]>(() => {
     const report = this.report();
@@ -197,12 +212,16 @@ export class ReportPageComponent {
 
     const projects = this.projectFilter();
     const teams = this.teamFilter();
+    const users = this.userFilter();
     const { from, to } = this.window();
 
     return report.assignments.filter(
       (a) =>
         (projects.size === 0 || projects.has(a.projectId)) &&
         (teams.size === 0 || teams.has(a.teamId)) &&
+        // Unassigned work survives a person filter: it belongs to nobody, and
+        // hiding it would defeat the panel that exists to surface it.
+        (users.size === 0 || a.assigneeId === null || users.has(a.assigneeId)) &&
         // Overlapping the window is enough; work spanning the boundary still
         // occupies the person during it.
         a.endDate >= from &&
@@ -210,27 +229,25 @@ export class ReportPageComponent {
     );
   });
 
-  /** People matching the search and team filter, before the "has work" cut. */
   private readonly candidateUsers = computed(() => {
     const report = this.report();
     if (!report) return [];
 
-    const term = this.personSearch().trim().toLowerCase();
     const teams = this.teamFilter();
+    const users = this.userFilter();
 
     return report.users.filter(
       (user) =>
-        (teams.size === 0 || (user.teamId !== null && teams.has(user.teamId))) &&
-        (term === '' ||
-          user.name.toLowerCase().includes(term) ||
-          (user.title ?? '').toLowerCase().includes(term)),
+        (users.size === 0 || users.has(user.id)) &&
+        (teams.size === 0 || (user.teamId !== null && teams.has(user.teamId))),
     );
   });
 
   protected readonly workloads = computed<PersonWorkload[]>(() => {
     const built = buildWorkload(
       this.candidateUsers(),
-      this.filteredAssignments(),
+      // Unassigned work belongs to nobody, so it must not inflate anyone's load.
+      this.filteredAssignments().filter((a) => a.assigneeId !== null),
       this.window(),
       this.today,
     );
@@ -243,7 +260,6 @@ export class ReportPageComponent {
     return [...visible].sort((a, b) => {
       if (sort === 'name') return a.user.name.localeCompare(b.user.name, 'fa');
       if (sort === 'free') return b.freeDays - a.freeDays;
-      // Busiest first, and among equals the one juggling more at once.
       return b.loadFactor - a.loadFactor || b.peakConcurrency - a.peakConcurrency;
     });
   });
@@ -269,33 +285,59 @@ export class ReportPageComponent {
   protected readonly weekendBands = computed(() => this.timeline().weekendBands());
   protected readonly todayX = computed(() => this.timeline().todayX(this.today));
 
-  protected readonly rows = computed<ReportRow[]>(() => {
+  private userById(id: string | null): User | null {
+    if (!id) return null;
+    return this.report()?.users.find((u) => u.id === id) ?? null;
+  }
+
+  /** Shared bar geometry for both grouping modes. */
+  private barsFor(lanes: Assignment[][], top: number, colorOf: (a: Assignment) => string) {
     const timeline = this.timeline();
     const fmt = this.settings.dateFormat();
+    const bars: ReportBar[] = [];
+
+    lanes.forEach((lane, laneIndex) => {
+      for (const assignment of lane) {
+        const x = timeline.xFor(assignment.startDate);
+        const width = Math.max(
+          timeline.widthFor(assignment.startDate, assignment.endDate) - 1,
+          3,
+        );
+        const assignee = this.userById(assignment.assigneeId);
+
+        bars.push({
+          assignment,
+          x,
+          width,
+          y: top + ROW_PADDING / 2 + laneIndex * LANE_HEIGHT + (LANE_HEIGHT - BAR_HEIGHT) / 2,
+          color: colorOf(assignment),
+          assignee,
+          showAvatar: width >= 52,
+          tooltip: [
+            assignment.name,
+            `${assignment.projectName} · ${assignment.teamName}`,
+            assignee ? assignee.name : 'بدون مسئول',
+            `${formatShort(assignment.startDate, fmt)} ← ${formatShort(assignment.endDate, fmt)}`,
+            `${assignmentDays(assignment)} روز کاری · ${MODULE_STATUS_LABELS[assignment.status]}`,
+          ].join('\n'),
+        });
+      }
+    });
+
+    return bars;
+  }
+
+  protected readonly rows = computed<ReportRow[]>(() =>
+    this.groupBy() === 'project' ? this.projectRows() : this.personRows(),
+  );
+
+  /** Rows are people; bars are coloured by project to expose split focus. */
+  private personRows(): ReportRow[] {
+    const timeline = this.timeline();
     let top = 0;
 
     return this.workloads().map((workload) => {
-      const bars: ReportBar[] = [];
-
-      workload.lanes.forEach((lane, laneIndex) => {
-        for (const assignment of lane) {
-          const x = timeline.xFor(assignment.startDate);
-          const width = Math.max(timeline.widthFor(assignment.startDate, assignment.endDate) - 1, 3);
-
-          bars.push({
-            assignment,
-            x,
-            width,
-            y: top + ROW_PADDING / 2 + laneIndex * LANE_HEIGHT + (LANE_HEIGHT - BAR_HEIGHT) / 2,
-            tooltip: [
-              assignment.name,
-              `${assignment.projectName} · ${assignment.teamName}`,
-              `${formatShort(assignment.startDate, fmt)} ← ${formatShort(assignment.endDate, fmt)}`,
-              `${assignmentDays(assignment)} روز · ${MODULE_STATUS_LABELS[assignment.status]}`,
-            ].join('\n'),
-          });
-        }
-      });
+      const bars = this.barsFor(workload.lanes, top, (a) => a.projectColor);
 
       const band = (start: string, end: string, label: string): Band => ({
         x: timeline.xFor(start),
@@ -307,20 +349,86 @@ export class ReportPageComponent {
       const height = lanes * LANE_HEIGHT + ROW_PADDING;
 
       const row: ReportRow = {
-        workload,
+        key: workload.user.id,
+        title: workload.user.name,
+        subtitle: workload.user.teamName ?? 'بدون تیم',
+        user: workload.user,
+        color: null,
+        projectId: null,
         top,
         height,
         bars,
-        gaps: workload.gaps.map((gap) => band(gap.start, gap.end, `${gap.days} روز آزاد`)),
-        overloads: workload.overloads.map((overload) =>
-          band(overload.start, overload.end, `${overload.peak} کار هم‌زمان`),
+        gaps: workload.gaps.map((g) => band(g.start, g.end, `${g.days} روز آزاد`)),
+        overloads: workload.overloads.map((o) =>
+          band(o.start, o.end, `${o.peak} کار هم‌زمان`),
         ),
+        workload,
+        moduleCount: workload.assignments.length,
       };
 
       top += height;
       return row;
     });
-  });
+  }
+
+  /**
+   * Rows are projects; bars are coloured by team and carry the assignee's
+   * face, so the question "who is on this work" is answered without leaving
+   * the portfolio view.
+   */
+  private projectRows(): ReportRow[] {
+    const report = this.report();
+    if (!report) return [];
+
+    const grouped = new Map<string, Assignment[]>();
+    for (const assignment of this.filteredAssignments()) {
+      const list = grouped.get(assignment.projectId);
+      if (list) list.push(assignment);
+      else grouped.set(assignment.projectId, [assignment]);
+    }
+
+    const projects = report.projects.filter(
+      (p) =>
+        (this.projectFilter().size === 0 || this.projectFilter().has(p.id)) &&
+        (!this.onlyWithWork() || (grouped.get(p.id)?.length ?? 0) > 0),
+    );
+
+    let top = 0;
+
+    return projects.map((project) => {
+      const assignments = grouped.get(project.id) ?? [];
+      const lanes = packLanes(assignments);
+      const bars = this.barsFor(lanes, top, (a) => a.teamColor);
+
+      const people = new Set(
+        assignments.map((a) => a.assigneeId).filter((id): id is string => id !== null),
+      );
+
+      const laneCount = Math.max(1, lanes.length);
+      const height = laneCount * LANE_HEIGHT + ROW_PADDING;
+
+      const row: ReportRow = {
+        key: project.id,
+        title: project.name,
+        subtitle: `${assignments.length} ماژول · ${people.size} نفر`,
+        user: null,
+        color: project.color,
+        projectId: project.id,
+        top,
+        height,
+        bars,
+        // Free/overload shading is a person concept: two parallel modules in a
+        // project is normal, whereas two on one person is a warning.
+        gaps: [],
+        overloads: [],
+        workload: null,
+        moduleCount: assignments.length,
+      };
+
+      top += height;
+      return row;
+    });
+  }
 
   protected readonly canvasHeight = computed(() => {
     const last = this.rows().at(-1);
@@ -346,19 +454,16 @@ export class ReportPageComponent {
     };
   });
 
-  /** Work nobody owns — the gap a capacity report exists to catch. */
   protected readonly unassigned = computed(() =>
     this.filteredAssignments().filter((a) => a.assigneeId === null),
   );
 
-  /** People carrying two or more things at once, worst first. */
   protected readonly overloadedPeople = computed(() =>
     this.workloads()
       .filter((w) => w.overloadedDays > 0)
       .sort((a, b) => b.overloadedDays - a.overloadedDays),
   );
 
-  /** Who has capacity, soonest and largest opening first. */
   protected readonly availablePeople = computed(() =>
     this.workloads()
       .filter((w) => w.freeDays > 0)
@@ -366,7 +471,6 @@ export class ReportPageComponent {
       .slice(0, 8),
   );
 
-  /** Assignments already past their end date and not finished. */
   protected readonly overdue = computed(() =>
     this.filteredAssignments()
       .filter((a) => a.status !== 'done' && a.endDate < this.today)
@@ -383,34 +487,23 @@ export class ReportPageComponent {
     return formatShort(iso, this.settings.dateFormat());
   }
 
-  protected days(assignment: Assignment): number {
-    return assignmentDays(assignment);
-  }
-
   protected percent(value: number): number {
     return Math.round(value * 100);
   }
 
-  /** Assignee name for the unassigned/overdue tables. */
   protected assigneeName(assignment: Assignment): string {
-    const report = this.report();
-    const user = report?.users.find((u) => u.id === assignment.assigneeId);
-    return user?.name ?? 'بدون مسئول';
+    return this.userById(assignment.assigneeId)?.name ?? 'بدون مسئول';
   }
 
-  protected userById(id: string | null) {
-    return this.report()?.users.find((u) => u.id === id) ?? null;
+  protected assigneeOf(assignment: Assignment): User | null {
+    return this.userById(assignment.assigneeId);
   }
 
-  /** How overloaded someone is, for the row's warning styling. */
-  protected loadClass(workload: PersonWorkload): string {
-    if (workload.overloadedDays > 0) return 'is-overloaded';
-    if (workload.assignments.length === 0) return 'is-idle';
+  protected rowClass(row: ReportRow): string {
+    if (!row.workload) return '';
+    if (row.workload.overloadedDays > 0) return 'is-overloaded';
+    if (row.workload.assignments.length === 0) return 'is-idle';
     return '';
-  }
-
-  protected daysBetween(from: string, to: string): number {
-    return Math.max(0, Number(new Date(to).getTime() - new Date(from).getTime()) / 86_400_000) + 1;
   }
 
   protected clampedWindowLabel(): string {
