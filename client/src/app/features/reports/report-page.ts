@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { forkJoin } from 'rxjs';
 
 import { ApiService, type ApiFailure } from '../../core/api.service';
 import { SettingsStore } from '../../core/settings.store';
@@ -14,12 +15,17 @@ import {
 import {
   MODULE_STATUS_LABELS,
   type Assignment,
+  type ModuleInput,
+  type ProjectModule,
+  type Team,
   type User,
   type WorkloadReport,
 } from '../../core/models';
 import { AvatarComponent } from '../../shared/avatar';
+import { ConfirmDialogComponent } from '../../shared/confirm-dialog';
 import { DigitsPipe } from '../../shared/digits.pipe';
 import { MultiSelectComponent, type MultiSelectOption } from '../../shared/multi-select';
+import { ModuleEditorComponent } from '../gantt/module-editor';
 
 const LANE_HEIGHT = 40;
 const BAR_HEIGHT = 26;
@@ -76,7 +82,14 @@ type GroupMode = 'person' | 'project';
  */
 @Component({
   selector: 'pma-report-page',
-  imports: [RouterLink, AvatarComponent, DigitsPipe, MultiSelectComponent],
+  imports: [
+    RouterLink,
+    AvatarComponent,
+    DigitsPipe,
+    MultiSelectComponent,
+    ModuleEditorComponent,
+    ConfirmDialogComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './report-page.html',
   styleUrl: './report-page.scss',
@@ -118,6 +131,71 @@ export class ReportPageComponent {
   /** `null` until the user overrides it; defaults to the span of all work. */
   protected readonly windowFrom = signal<string | null>(null);
   protected readonly windowTo = signal<string | null>(null);
+
+  /* ---------------------------------------------------------- module edit */
+
+  /**
+   * The module being edited, with the teams its own project offers.
+   *
+   * Teams are per-project connections, so the row picker must show that
+   * project's rows — not the whole registry the report happens to hold.
+   */
+  protected readonly editing = signal<{ module: ProjectModule; teams: Team[] } | null>(null);
+  protected readonly opening = signal<string | null>(null);
+  protected readonly deletingModule = signal<ProjectModule | null>(null);
+
+  /** Opens the editor on a freshly fetched module. */
+  protected openEditor(assignment: Assignment): void {
+    if (this.opening()) return;
+    this.opening.set(assignment.id);
+
+    forkJoin({
+      module: this.api.getModule(assignment.id),
+      teams: this.api.listProjectTeams(assignment.projectId),
+    }).subscribe({
+      next: (loaded) => {
+        this.editing.set(loaded);
+        this.opening.set(null);
+      },
+      error: (failure: ApiFailure) => {
+        this.error.set(failure.message);
+        this.opening.set(null);
+      },
+    });
+  }
+
+  protected saveModule(input: ModuleInput): void {
+    const target = this.editing();
+    if (!target) return;
+
+    // Cascade off: a report is a read-across of many projects, and quietly
+    // reshuffling a project's dependents from here would be a surprise.
+    this.api.updateModule(target.module.id, input, false).subscribe({
+      next: () => {
+        this.editing.set(null);
+        this.load();
+      },
+      error: (failure: ApiFailure) => this.error.set(failure.message),
+    });
+  }
+
+  protected requestDeleteModule(): void {
+    const target = this.editing();
+    if (!target) return;
+    this.editing.set(null);
+    this.deletingModule.set(target.module);
+  }
+
+  protected confirmDeleteModule(): void {
+    const module = this.deletingModule();
+    if (!module) return;
+    this.deletingModule.set(null);
+
+    this.api.deleteModule(module.id).subscribe({
+      next: () => this.load(),
+      error: (failure: ApiFailure) => this.error.set(failure.message),
+    });
+  }
 
   constructor() {
     this.load();

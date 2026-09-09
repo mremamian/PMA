@@ -266,9 +266,12 @@
               <div class="layer layer--bars">
                 @for (row of rows(); track row.key) {
                   @for (bar of row.bars; track bar.assignment.id) {
-                    <a
+                    <!-- Clicking edits in place; the report is where you spot
+                         the problem, so it should be where you fix it. -->
+                    <button
+                      type="button"
                       class="bar"
-                      [routerLink]="['/projects', bar.assignment.projectId]"
+                      (click)="openEditor(bar.assignment)"
                       [style.left.px]="bar.x"
                       [style.top.px]="bar.y"
                       [style.width.px]="bar.width"
@@ -276,7 +279,8 @@
                       [style.background]="bar.color"
                       [class.bar--done]="bar.assignment.status === 'done'"
                       [class.bar--unassigned]="!bar.assignee"
-                      [title]="bar.tooltip"
+                      [class.bar--loading]="opening() === bar.assignment.id"
+                      [title]="bar.tooltip + '\n\nبرای ویرایش کلیک کنید'"
                     >
                       <!-- In project mode the face is the point of the row: it
                            says who is on this module without leaving the view. -->
@@ -292,7 +296,7 @@
                           {{ bar.assignment.name }}
                         }
                       </span>
-                    </a>
+                    </button>
                   }
                 }
               </div>
@@ -321,12 +325,12 @@
           <ul class="rows">
             @for (item of unassigned(); track item.id) {
               <li>
-                <a class="row" [routerLink]="['/projects', item.projectId]">
+                <button type="button" class="row" (click)="openEditor(item)" title="ویرایش ماژول">
                   <span class="row__dot" [style.background]="item.teamColor"></span>
                   <span class="row__name truncate">{{ item.name }}</span>
                   <span class="row__meta truncate">{{ item.projectName }}</span>
                   <bdi class="row__date">{{ short(item.startDate) }}</bdi>
-                </a>
+                </button>
               </li>
             }
           </ul>
@@ -403,12 +407,12 @@
           <ul class="rows">
             @for (item of overdue(); track item.id) {
               <li>
-                <a class="row" [routerLink]="['/projects', item.projectId]">
+                <button type="button" class="row" (click)="openEditor(item)" title="ویرایش ماژول">
                   <pma-avatar [user]="assigneeOf(item)" [size]="22" />
                   <span class="row__name truncate">{{ item.name }}</span>
                   <span class="row__meta truncate">{{ assigneeName(item) }}</span>
                   <bdi class="row__date row__date--late">{{ short(item.endDate) }}</bdi>
-                </a>
+                </button>
               </li>
             }
           </ul>
@@ -417,3 +421,24 @@
     </div>
   }
 </div>
+
+@if (editing(); as target) {
+  <pma-module-editor
+    [module]="target.module"
+    [teams]="target.teams"
+    [users]="report()?.users ?? []"
+    (saved)="saveModule($event)"
+    (deleted)="requestDeleteModule()"
+    (cancelled)="editing.set(null)"
+  />
+}
+
+@if (deletingModule(); as module) {
+  <pma-confirm-dialog
+    title="حذف ماژول"
+    [message]="'ماژول «' + module.name + '» حذف شود؟'"
+    confirmLabel="حذف ماژول"
+    (confirmed)="confirmDeleteModule()"
+    (cancelled)="deletingModule.set(null)"
+  />
+}

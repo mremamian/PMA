@@ -14,7 +14,18 @@ import { formatLong, todayIso } from './core/jalali';
 export class App {
   protected readonly settings = inject(SettingsStore);
 
-  /** Today's date in Shamsi, shown in the header. */
+  /**
+   * Side navigation. The icons carry the meaning when the rail is collapsed,
+   * so each one has to be distinguishable at a glance rather than decorative.
+   */
+  protected readonly navItems = [
+    { path: '/projects', label: 'پروژه‌ها', icon: '▦' },
+    { path: '/teams', label: 'تیم‌ها', icon: '◈' },
+    { path: '/people', label: 'افراد', icon: '☺' },
+    { path: '/reports', label: 'گزارش‌ها', icon: '▤' },
+  ];
+
+  /** Today's date in Shamsi, shown at the foot of the rail. */
   protected today(): string {
     return formatLong(todayIso(), this.settings.dateFormat());
   }

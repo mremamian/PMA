@@ -12,6 +12,8 @@ interface PersistedSettings {
   cascade: boolean;
   showDependencies: boolean;
   hideEmptyRows: boolean;
+  /** Side navigation folded to icons, to give the chart more width. */
+  navCollapsed: boolean;
   /** `"<projectId>:<teamId>"` for each collapsed row. */
   collapsedRows: string[];
 }
@@ -27,6 +29,7 @@ const DEFAULTS: PersistedSettings = {
   // Teams are global, so a chart lists every team including ones with no work
   // here. Off by default — an empty row is where you plan that team's work.
   hideEmptyRows: false,
+  navCollapsed: false,
   collapsedRows: [],
 };
 
@@ -51,6 +54,7 @@ export class SettingsStore {
   readonly cascade = signal(this.initial.cascade);
   readonly showDependencies = signal(this.initial.showDependencies);
   readonly hideEmptyRows = signal(this.initial.hideEmptyRows);
+  readonly navCollapsed = signal(this.initial.navCollapsed);
 
   /**
    * Which rows are collapsed, keyed by project *and* team.
@@ -95,6 +99,7 @@ export class SettingsStore {
         cascade: this.cascade(),
         showDependencies: this.showDependencies(),
         hideEmptyRows: this.hideEmptyRows(),
+        navCollapsed: this.navCollapsed(),
         collapsedRows: [...this.collapsedRows()],
       };
       try {

@@ -3,7 +3,13 @@ import { query, queryOne, withTransaction } from '../db/pool.js';
 import { ApiError, asyncHandler } from '../lib/http.js';
 import { toModuleDto } from '../lib/serialize.js';
 import { cascadeSchedule } from '../lib/scheduling.js';
-import { parse, parseId, moduleCreateSchema, moduleUpdateSchema } from '../lib/validation.js';
+import {
+  parse,
+  parseId,
+  moduleCreateSchema,
+  moduleShiftSchema,
+  moduleUpdateSchema,
+} from '../lib/validation.js';
 import { assertProjectExists } from './projects.js';
 
 /** Mounted at /api/projects/:projectId/modules */
@@ -90,6 +96,99 @@ projectModulesRouter.post(
     );
 
     res.status(201).json({ data: toModuleDto(row) });
+  }),
+);
+
+/**
+ * POST /api/projects/:projectId/modules/shift[?cascade=true]
+ * Body: { moduleIds: [...], deltaDays: number }
+ *
+ * Moves several modules by the same number of calendar days — what dragging a
+ * multi-selection on the chart commits. One transaction rather than N separate
+ * PATCHes, so a partial failure cannot leave half a selection moved.
+ *
+ * The shift is in calendar days, matching what the pointer did: the bars land
+ * exactly where they were dropped. Durations are still counted in working
+ * days, so a bar pushed across a Thursday simply reads as fewer of them.
+ */
+projectModulesRouter.post(
+  '/shift',
+  asyncHandler(async (req, res) => {
+    const projectId = parseId(req.params.projectId, 'project id');
+    await assertProjectExists(projectId);
+
+    const { moduleIds, deltaDays } = parse(moduleShiftSchema, req.body);
+    const cascade = wantsCascade(req);
+
+    const unique = [...new Set(moduleIds)];
+
+    const result = await withTransaction(async (client) => {
+      const { rows: targets } = await client.query(
+        `SELECT * FROM modules
+         WHERE id = ANY($1::uuid[]) AND project_id = $2
+         FOR UPDATE`,
+        [unique, projectId],
+      );
+
+      if (targets.length !== unique.length) {
+        throw ApiError.badRequest('برخی از ماژول‌ها در این پروژه پیدا نشدند.');
+      }
+
+      const { rows: shifted } = await client.query(
+        `UPDATE modules
+         SET start_date = start_date + $2::int, end_date = end_date + $2::int
+         WHERE id = ANY($1::uuid[])
+         RETURNING *`,
+        [unique, deltaDays],
+      );
+
+      if (!cascade) return { modules: shifted, moved: [] };
+
+      const [{ rows: allModules }, { rows: allDeps }] = await Promise.all([
+        client.query('SELECT * FROM modules WHERE project_id = $1 FOR UPDATE', [projectId]),
+        client.query('SELECT * FROM dependencies WHERE project_id = $1', [projectId]),
+      ]);
+
+      // Every shifted module anchors the cascade, so dependents settle behind
+      // the whole selection rather than behind one arbitrary member.
+      const pushed = cascadeSchedule(
+        allModules.map((m) => ({ id: m.id, startDate: m.start_date, endDate: m.end_date })),
+        allDeps.map((d) => ({
+          id: d.id,
+          fromModuleId: d.from_module_id,
+          toModuleId: d.to_module_id,
+          type: d.type,
+          lagDays: d.lag_days,
+        })),
+        unique,
+      );
+
+      if (pushed.size === 0) return { modules: shifted, moved: [] };
+
+      const ids = [...pushed.keys()];
+      const { rows: movedRows } = await client.query(
+        `UPDATE modules AS m
+         SET start_date = v.start_date, end_date = v.end_date
+         FROM (SELECT * FROM unnest($1::uuid[], $2::date[], $3::date[])
+               AS t(id, start_date, end_date)) AS v
+         WHERE m.id = v.id
+         RETURNING m.*`,
+        [
+          ids,
+          ids.map((id) => pushed.get(id).startDate),
+          ids.map((id) => pushed.get(id).endDate),
+        ],
+      );
+
+      return { modules: shifted, moved: movedRows };
+    });
+
+    res.json({
+      data: {
+        modules: result.modules.map(toModuleDto),
+        moved: result.moved.map(toModuleDto),
+      },
+    });
   }),
 );
 

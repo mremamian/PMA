@@ -1,42 +1,61 @@
-<header class="topbar">
-  <a class="topbar__brand" routerLink="/projects">
-    <span class="topbar__mark" aria-hidden="true">PM</span>
-    <span class="topbar__title">دستیار مدیر محصول</span>
+<aside class="sidenav" [class.sidenav--collapsed]="settings.navCollapsed()">
+  <a class="sidenav__brand" routerLink="/projects" [title]="'دستیار مدیر محصول'">
+    <span class="sidenav__mark" aria-hidden="true">PM</span>
+    <span class="sidenav__title">دستیار مدیر محصول</span>
   </a>
 
-  <nav class="topbar__nav" aria-label="ناوبری اصلی">
-    <a routerLink="/projects" routerLinkActive="is-active">پروژه‌ها</a>
-    <a routerLink="/teams" routerLinkActive="is-active">تیم‌ها</a>
-    <a routerLink="/people" routerLinkActive="is-active">افراد</a>
-    <a routerLink="/reports" routerLinkActive="is-active">گزارش‌ها</a>
+  <nav class="sidenav__nav" aria-label="ناوبری اصلی">
+    @for (item of navItems; track item.path) {
+      <a
+        [routerLink]="item.path"
+        routerLinkActive="is-active"
+        [title]="item.label"
+      >
+        <span class="sidenav__icon" aria-hidden="true">{{ item.icon }}</span>
+        <span class="sidenav__label">{{ item.label }}</span>
+      </a>
+    }
   </nav>
 
-  <div class="topbar__right">
-    <bdi class="topbar__today">{{ today() }}</bdi>
+  <div class="sidenav__foot">
+    <bdi class="sidenav__today">{{ today() }}</bdi>
+
+    <div class="sidenav__settings">
+      <button
+        type="button"
+        class="btn btn--sm"
+        (click)="settings.toggleLocale()"
+        [title]="
+          settings.locale() === 'fa'
+            ? 'نمایش نام ماه‌ها به لاتین'
+            : 'نمایش نام ماه‌ها به فارسی'
+        "
+      >
+        {{ settings.locale() === 'fa' ? 'ماه: فارسی' : 'ماه: لاتین' }}
+      </button>
+
+      <button
+        type="button"
+        class="btn btn--sm"
+        (click)="settings.persianDigits.set(!settings.persianDigits())"
+        title="تغییر شکل ارقام"
+      >
+        {{ settings.persianDigits() ? '۱۲۳' : '123' }}
+      </button>
+    </div>
 
     <button
       type="button"
-      class="btn btn--sm"
-      (click)="settings.toggleLocale()"
-      [title]="
-        settings.locale() === 'fa'
-          ? 'نمایش نام ماه‌ها به لاتین'
-          : 'نمایش نام ماه‌ها به فارسی'
-      "
+      class="sidenav__collapse"
+      (click)="settings.navCollapsed.set(!settings.navCollapsed())"
+      [title]="settings.navCollapsed() ? 'باز کردن منو' : 'جمع کردن منو'"
+      [attr.aria-expanded]="!settings.navCollapsed()"
     >
-      {{ settings.locale() === 'fa' ? 'ماه: فارسی' : 'ماه: لاتین' }}
-    </button>
-
-    <button
-      type="button"
-      class="btn btn--sm"
-      (click)="settings.persianDigits.set(!settings.persianDigits())"
-      title="تغییر شکل ارقام"
-    >
-      {{ settings.persianDigits() ? '۱۲۳' : '123' }}
+      <span aria-hidden="true">{{ settings.navCollapsed() ? '«' : '»' }}</span>
+      <span class="sidenav__label">جمع کردن منو</span>
     </button>
   </div>
-</header>
+</aside>
 
 <main class="app-main">
   <router-outlet />

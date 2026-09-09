@@ -217,6 +217,19 @@ export class ApiService {
 
   /* ------------------------------------------------------------- modules -- */
 
+  /**
+   * One module in full.
+   *
+   * The report's flattened assignments omit `description`, `color` and
+   * `sortOrder`; editing from those alone would blank the notes on save, so
+   * the editor is opened on a freshly fetched record.
+   */
+  getModule(moduleId: string): Observable<ProjectModule> {
+    return this.unwrap(
+      this.http.get<Envelope<ProjectModule>>(`${this.base}/modules/${moduleId}`),
+    );
+  }
+
   createModule(projectId: string, input: ModuleInput): Observable<ProjectModule> {
     return this.unwrap(
       this.http.post<Envelope<ProjectModule>>(
@@ -270,6 +283,24 @@ export class ApiService {
 
   deleteDependency(dependencyId: string): Observable<void> {
     return this.handle(this.http.delete<void>(`${this.base}/dependencies/${dependencyId}`));
+  }
+
+  /** Moves several modules by the same number of days, in one transaction. */
+  shiftModules(
+    projectId: string,
+    moduleIds: string[],
+    deltaDays: number,
+    cascade: boolean,
+  ): Observable<{ modules: ProjectModule[]; moved: ProjectModule[] }> {
+    const params = cascade ? new HttpParams().set('cascade', 'true') : undefined;
+
+    return this.unwrap(
+      this.http.post<Envelope<{ modules: ProjectModule[]; moved: ProjectModule[] }>>(
+        `${this.base}/projects/${projectId}/modules/shift`,
+        { moduleIds, deltaDays },
+        { params },
+      ),
+    );
   }
 
   /* ------------------------------------------------------------- reports -- */

@@ -1,4 +1,4 @@
-@if (store.project(); as project) {
+﻿@if (store.project(); as project) {
   <header class="page-head">
     <div class="page-head__left">
       <a class="back" routerLink="/projects" aria-label="بازگشت به پروژه‌ها">→</a>
@@ -108,7 +108,8 @@
     <span class="toolbar__spacer"></span>
 
     <span class="toolbar__hint">
-      برای جابه‌جایی میله را بکشید · برای تغییر طول، لبه‌ها را بکشید · برای پیوند، نقطه را بکشید
+      برای جابه‌جایی میله را بکشید · برای تغییر طول، لبه‌ها را بکشید · برای پیوند، نقطه را بکشید ·
+      با Ctrl+کلیک چند ماژول را انتخاب کنید
     </span>
   </div>
 
@@ -125,6 +126,31 @@
         {{ store.violations().length | digits: settings.persianDigits() }} وابستگی نقض شده است — یک ماژول پیش از آنکه پیش‌نیازش
         اجازه دهد شروع می‌شود.
       </span>
+    </div>
+  }
+
+  <!-- Appears only for a multi-selection; a single one shows the details
+       panel instead. -->
+  @if (store.selection().length > 1) {
+    <div class="bulk" role="status">
+      <span class="bulk__count">
+        {{ store.selection().length | digits: settings.persianDigits() }} ماژول انتخاب شده
+      </span>
+      <span class="bulk__range"><bdi>{{ selectionRange() }}</bdi></span>
+
+      <span class="bulk__spacer"></span>
+
+      <span class="bulk__label">جابه‌جایی:</span>
+      <div class="toolbar__group" role="group" aria-label="جابه‌جایی گروهی">
+        <button type="button" class="seg" (click)="shiftSelection(-7)">−۱ هفته</button>
+        <button type="button" class="seg" (click)="shiftSelection(-1)">−۱ روز</button>
+        <button type="button" class="seg" (click)="shiftSelection(1)">+۱ روز</button>
+        <button type="button" class="seg" (click)="shiftSelection(7)">+۱ هفته</button>
+      </div>
+
+      <button type="button" class="btn btn--sm btn--ghost" (click)="store.clearSelection()">
+        پاک کردن انتخاب
+      </button>
     </div>
   }
 
@@ -145,7 +171,7 @@
           <button
             type="button"
             class="btn btn--sm btn--ghost"
-            (click)="store.selectedModuleId.set(null)"
+            (click)="store.clearSelection()"
             aria-label="بستن جزئیات"
           >
             ×

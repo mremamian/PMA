@@ -1,10 +1,10 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
+﻿import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 import { ApiService, type ApiFailure } from '../../core/api.service';
 import { BoardStore } from '../../core/board.store';
 import { SettingsStore } from '../../core/settings.store';
-import { formatLong, formatShort } from '../../core/jalali';
+import { formatLong, formatShort, maxIso, minIso } from '../../core/jalali';
 import { ZOOM_PRESETS, type ZoomLevel } from '../../core/timeline';
 import {
   MODULE_STATUS_LABELS,
@@ -235,6 +235,22 @@ export class GanttPageComponent {
     this.store.deleteModule(module.id);
     this.deletingModule.set(null);
   }
+
+  /** Moves everything selected by the same number of calendar days. */
+  protected shiftSelection(deltaDays: number): void {
+    this.store.shiftModules(this.store.selection(), deltaDays, this.settings.cascade());
+  }
+
+  /** Span the selection covers, so a bulk move shows what is being moved. */
+  protected readonly selectionRange = computed(() => {
+    const modules = this.store.selectedModules();
+    if (modules.length === 0) return '';
+
+    const start = modules.reduce((min, m) => minIso(min, m.startDate), modules[0].startDate);
+    const end = modules.reduce((max, m) => maxIso(max, m.endDate), modules[0].endDate);
+
+    return `${this.short(start)} ← ${this.short(end)}`;
+  });
 
   protected moduleDeleteDetail(module: ProjectModule): string | null {
     const { incoming, outgoing } = this.store.linksFor(module.id);

@@ -69,6 +69,17 @@ export const teamLinkSchema = z.object({
   teamIds: z.array(uuid),
 });
 
+/** Moving several modules by the same number of calendar days. */
+export const moduleShiftSchema = z.object({
+  moduleIds: z.array(uuid).min(1, 'دست‌کم یک ماژول لازم است'),
+  deltaDays: z
+    .number()
+    .int()
+    .min(-3650)
+    .max(3650)
+    .refine((value) => value !== 0, { message: 'جابه‌جایی صفر روز تغییری ایجاد نمی‌کند' }),
+});
+
 /* -------------------------------------------------------------- modules -- */
 
 const moduleBase = {

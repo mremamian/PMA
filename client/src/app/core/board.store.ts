@@ -47,7 +47,45 @@ export class BoardStore {
   /** Number of writes in flight; drives the "saving" indicator. */
   readonly pending = signal(0);
 
-  readonly selectedModuleId = signal<string | null>(null);
+  /**
+   * Selected modules, in click order — the last is the anchor.
+   *
+   * An array rather than a Set so "the one you just clicked" stays knowable,
+   * which is what the details panel shows when exactly one is selected.
+   */
+  readonly selection = signal<readonly string[]>([]);
+
+  readonly selectedModuleIds = computed(() => new Set(this.selection()));
+
+  /** The single selected module, or null when zero or several are selected. */
+  readonly selectedModuleId = computed(() =>
+    this.selection().length === 1 ? this.selection()[0] : null,
+  );
+
+  /** Every selected module, skipping ids that no longer exist. */
+  readonly selectedModules = computed(() => {
+    const byId = this.moduleById();
+    return this.selection()
+      .map((id) => byId.get(id))
+      .filter((m): m is ProjectModule => m !== undefined);
+  });
+
+  /**
+   * `additive` (ctrl/cmd-click) toggles the module in the selection; without
+   * it the click replaces the selection.
+   */
+  selectModule(moduleId: string, additive = false): void {
+    this.selection.update((current) => {
+      if (!additive) return [moduleId];
+      return current.includes(moduleId)
+        ? current.filter((id) => id !== moduleId)
+        : [...current, moduleId];
+    });
+  }
+
+  clearSelection(): void {
+    this.selection.set([]);
+  }
   readonly today = signal(todayIso());
 
   /* ------------------------------------------------------------- derived -- */
@@ -184,7 +222,7 @@ export class BoardStore {
     this.modules.set([]);
     this.dependencies.set([]);
     this.users.set([]);
-    this.selectedModuleId.set(null);
+    this.selection.set([]);
     this.error.set(null);
   }
 
@@ -251,7 +289,7 @@ export class BoardStore {
     this.dependencies.update((list) =>
       list.filter((d) => d.fromModuleId !== moduleId && d.toModuleId !== moduleId),
     );
-    if (this.selectedModuleId() === moduleId) this.selectedModuleId.set(null);
+    this.selection.update((current) => current.filter((id) => id !== moduleId));
 
     this.track(this.api.deleteModule(moduleId)).subscribe({
       error: (failure: ApiFailure) => {
@@ -438,6 +476,45 @@ export class BoardStore {
     return current && !base.some((user) => user.id === current.id)
       ? [current, ...base]
       : base;
+  }
+
+  /**
+   * Moves several modules by the same number of calendar days.
+   *
+   * Goes to the bulk endpoint rather than looping over `updateModule`: one
+   * transaction means a failure cannot leave half the selection moved, and
+   * dependents cascade behind the whole group instead of behind whichever
+   * module happened to be saved last.
+   */
+  shiftModules(moduleIds: readonly string[], deltaDays: number, cascade: boolean): void {
+    const projectId = this.project()?.id;
+    if (!projectId || moduleIds.length === 0 || deltaDays === 0) return;
+
+    const snapshot = this.modules();
+    const targets = new Set(moduleIds);
+
+    this.modules.update((list) =>
+      list.map((module) =>
+        targets.has(module.id)
+          ? {
+              ...module,
+              startDate: addDays(module.startDate, deltaDays),
+              endDate: addDays(module.endDate, deltaDays),
+            }
+          : module,
+      ),
+    );
+
+    this.track(this.api.shiftModules(projectId, [...moduleIds], deltaDays, cascade)).subscribe({
+      next: ({ modules, moved }) => {
+        const updated = new Map([...modules, ...moved].map((m) => [m.id, m]));
+        this.modules.update((list) => list.map((m) => updated.get(m.id) ?? m));
+      },
+      error: (failure: ApiFailure) => {
+        this.modules.set(snapshot);
+        this.error.set(failure.message);
+      },
+    });
   }
 
   /** Assign or (with `null`) unassign a module. */

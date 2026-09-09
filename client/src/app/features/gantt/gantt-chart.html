@@ -1,4 +1,4 @@
-<!-- dir="ltr" even though the app is RTL: a timeline reads earliest-to-latest
+﻿<!-- dir="ltr" even though the app is RTL: a timeline reads earliest-to-latest
      left to right, and mirroring it would put the future on the left and flip
      every dependency arrow. Labels inside are still Persian. -->
 <div
@@ -269,7 +269,7 @@
                   role="button"
                   [attr.aria-label]="bar.tooltip"
                   (pointerdown)="onBarPointerDown($event, bar.module, 'move')"
-                  (click)="onSelectModule(bar.module)"
+                  (click)="onSelectModule($event, bar.module)"
                   (dblclick)="editModule.emit(bar.module)"
                   (keydown)="onBarKeydown($event, bar.module)"
                 ></div>
@@ -304,7 +304,7 @@
                   role="button"
                   [attr.aria-label]="bar.tooltip"
                   (pointerdown)="onBarPointerDown($event, bar.module, 'move')"
-                  (click)="onSelectModule(bar.module)"
+                  (click)="onSelectModule($event, bar.module)"
                   (dblclick)="editModule.emit(bar.module)"
                   (keydown)="onBarKeydown($event, bar.module)"
                 >

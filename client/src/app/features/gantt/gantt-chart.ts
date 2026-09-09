@@ -48,6 +48,14 @@ interface DragState {
   originalStart: string;
   originalEnd: string;
   deltaDays: number;
+  /**
+   * The rest of a multi-selection being moved alongside `moduleId`. Only
+   * populated for `move`; resizing several bars at once has no clear meaning,
+   * so an edge drag stays single.
+   */
+  others: { moduleId: string; originalStart: string; originalEnd: string }[];
+  /** Ctrl/Cmd was held on press — the click that follows will toggle. */
+  additive: boolean;
 }
 
 interface LinkState {
@@ -197,7 +205,7 @@ export class GanttChartComponent {
    */
   protected readonly rows = computed<RowLayout[]>(() => {
     const timeline = this.timeline();
-    const selectedId = this.store.selectedModuleId();
+    const selectedIds = this.store.selectedModuleIds();
     const today = this.store.today();
     const fmt = this.settings.dateFormat();
     const users = this.store.userById();
@@ -266,7 +274,7 @@ export class GanttChartComponent {
           tooltip: this.tooltipFor(module, draft, fmt, assignee),
           progressWidth: isMilestone ? 0 : (width * module.progress) / 100,
           isOverdue: module.status !== 'done' && draft.endDate < today,
-          isSelected: module.id === selectedId,
+          isSelected: selectedIds.has(module.id),
           assignee,
           // Below this the avatar would cover the whole bar and swallow its label.
           showAvatar: !isMilestone && !!assignee && width >= 56,
@@ -377,11 +385,21 @@ export class GanttChartComponent {
   /** Dates to render for a module: the live drag preview, or its stored dates. */
   private draftDates(module: ProjectModule): { startDate: string; endDate: string } {
     const drag = this.drag();
-    if (!drag || drag.moduleId !== module.id || drag.deltaDays === 0) {
+    if (!drag || drag.deltaDays === 0) {
       return { startDate: module.startDate, endDate: module.endDate };
     }
 
-    return this.applyDrag(drag);
+    if (drag.moduleId === module.id) return this.applyDrag(drag);
+
+    // Everything else in the selection previews with the same offset, so the
+    // group visibly moves as one.
+    const other = drag.others.find((o) => o.moduleId === module.id);
+    if (!other) return { startDate: module.startDate, endDate: module.endDate };
+
+    return {
+      startDate: addDays(other.originalStart, drag.deltaDays),
+      endDate: addDays(other.originalEnd, drag.deltaDays),
+    };
   }
 
   private applyDrag(drag: DragState): { startDate: string; endDate: string } {
@@ -423,6 +441,24 @@ export class GanttChartComponent {
     // A milestone has no length, so its edges cannot be resized.
     const effectiveMode = module.kind === 'milestone' ? 'move' : mode;
 
+    // Grabbing a bar that is part of a multi-selection drags the whole group.
+    // Grabbing one outside it starts a fresh single drag, which is why the
+    // membership test matters rather than just the selection size.
+    const selected = this.store.selectedModuleIds();
+    const dragsGroup =
+      effectiveMode === 'move' && selected.size > 1 && selected.has(module.id);
+
+    const others = dragsGroup
+      ? this.store
+          .selectedModules()
+          .filter((m) => m.id !== module.id)
+          .map((m) => ({
+            moduleId: m.id,
+            originalStart: m.startDate,
+            originalEnd: m.endDate,
+          }))
+      : [];
+
     this.drag.set({
       moduleId: module.id,
       mode: effectiveMode,
@@ -430,6 +466,8 @@ export class GanttChartComponent {
       originalStart: module.startDate,
       originalEnd: module.endDate,
       deltaDays: 0,
+      others,
+      additive: event.ctrlKey || event.metaKey,
     });
 
     this.beginGesture(
@@ -461,9 +499,26 @@ export class GanttChartComponent {
      * on the canvas and cleared the selection again. The details only stayed
      * visible while the button was held down.
      */
-    this.store.selectedModuleId.set(drag.moduleId);
+    /*
+     * A group drag keeps its selection; a single drag selects what was moved.
+     *
+     * Not for a ctrl/cmd press though: selecting here would replace the
+     * selection, and the click that follows would then toggle that same module
+     * straight back off, so ctrl-clicking a second bar ended up selecting
+     * nothing at all. When the modifier is held, the click owns the selection.
+     */
+    if (drag.others.length === 0 && !drag.additive) this.store.selectModule(drag.moduleId);
 
     if (drag.deltaDays === 0) return;
+
+    if (drag.others.length > 0) {
+      this.store.shiftModules(
+        [drag.moduleId, ...drag.others.map((o) => o.moduleId)],
+        drag.deltaDays,
+        this.settings.cascade(),
+      );
+      return;
+    }
 
     const { startDate, endDate } = this.applyDrag(drag);
     this.store.moveModule(drag.moduleId, startDate, endDate, this.settings.cascade());
@@ -704,8 +759,9 @@ export class GanttChartComponent {
    * following `click` would immediately close them again — details would only
    * stay visible while the mouse was held down.
    */
-  protected onSelectModule(module: ProjectModule): void {
-    this.store.selectedModuleId.set(module.id);
+  /** Ctrl/Cmd-click adds to the selection; a plain click replaces it. */
+  protected onSelectModule(event: MouseEvent, module: ProjectModule): void {
+    this.store.selectModule(module.id, event.ctrlKey || event.metaKey);
   }
 
   /**
@@ -719,7 +775,10 @@ export class GanttChartComponent {
    */
   protected onCanvasPointerDown(event: PointerEvent): void {
     if (event.button !== 0) return;
-    this.store.selectedModuleId.set(null);
+    // Ctrl/Cmd is the "keep building a selection" modifier, so a stray press on
+    // the background while holding it must not wipe what was gathered.
+    if (event.ctrlKey || event.metaKey) return;
+    this.store.clearSelection();
   }
 
   protected showAssignee(bar: BarLayout): void {

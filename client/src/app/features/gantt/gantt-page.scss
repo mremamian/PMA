@@ -216,6 +216,7 @@
 /* ------------------------------------------------------------ workspace -- */
 
 .workspace {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
@@ -228,13 +229,29 @@ pma-gantt-chart {
 
 /* -------------------------------------------------------- details panel -- */
 
+/**
+ * An overlay, not a flex sibling.
+ *
+ * As a sibling the panel took 288px out of the row, so selecting a module
+ * resized the chart and slid every bar sideways — the chart jumped each time
+ * you clicked a bar or closed the panel. Floating it over the chart leaves the
+ * timeline geometry untouched: nothing moves, only something appears on top.
+ */
 .details {
-  flex: 0 0 288px;
+  position: absolute;
+  z-index: 6;
+  inset-block: 0;
+  /* The trailing edge — left under RTL — which is where the panel sat when it
+     was a flex sibling, and the far side from the navigation rail. */
+  inset-inline-end: 0;
+  width: 300px;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   border-inline-start: 1px solid var(--border);
   border-top: 1px solid var(--border);
   background: var(--surface);
+  box-shadow: 0 0 22px rgb(16 24 40 / 14%);
   overflow: hidden;
 }
 
@@ -277,6 +294,26 @@ pma-gantt-chart {
   color: var(--text-muted);
   white-space: pre-wrap;
 }
+
+/* Bulk-selection bar, shown in place of the details panel when several
+   modules are selected at once. */
+.bulk {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  margin: 0 0 2px;
+  background: var(--accent-soft);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+
+.bulk__count { font-weight: 600; color: var(--accent); }
+.bulk__range { color: var(--text-muted); font-size: 12px; }
+.bulk__label { color: var(--text-muted); }
+.bulk__spacer { flex: 1 1 auto; }
 
 .assignee {
   display: flex;
